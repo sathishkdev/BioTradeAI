@@ -8,6 +8,9 @@ Usage:
     python -m biotradeai runway TICKER [--facts-file F] [--as-of YYYY-MM-DD]
     python -m biotradeai trial NCT######## [--file F]
     python -m biotradeai catalysts
+    python -m biotradeai account | positions [--broker alpaca|fake]
+    python -m biotradeai order TICKER --qty N --limit P [--side buy|sell] [--broker ...]
+    python -m biotradeai killswitch status|trip|reset
 """
 
 from __future__ import annotations
@@ -22,13 +25,17 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from biotradeai import cli_trading
 from biotradeai.agents.llm import LLMError, LLMMessage, make_llm_client, resolve_spec
+from biotradeai.brokers.approval import ApprovalError
+from biotradeai.brokers.base import BrokerError
 from biotradeai.config import ConfigError, load_config
 from biotradeai.data.catalysts import CatalystFileError, load_catalysts
 from biotradeai.data.clinicaltrials import ClinicalTrialsClient, parse_study
 from biotradeai.data.edgar import EdgarClient, EdgarConfigError, parse_company_facts
 from biotradeai.data.http import FetchError
 from biotradeai.data.runway import RunwayUnavailableError, compute_runway
+from biotradeai.guardrails import rules
 from biotradeai.paths import REPO_ROOT
 from biotradeai.store.sqlite_store import SQLiteStore
 
@@ -90,8 +97,8 @@ def _cmd_runway(args: argparse.Namespace) -> int:
         print(f"    quarter {q.start}..{q.end}  OCF ${q.ocf / m:,.2f}M  [{q.method}]")
     for n in r.notes:
         print(f"  note: {n}")
-    veto = r.runway_months < cfg.min_runway_months
-    fatal = r.runway_months < cfg.fatal_runway_months
+    fatal = rules.is_fatal_runway(r.runway_months, cfg)
+    veto = not rules.check_runway(r.runway_months, cfg).ok
     print(f"  vs guardrails      : fatal_prune={fatal}  risk_veto={veto}")
     return 0
 
@@ -147,6 +154,7 @@ def build_parser() -> argparse.ArgumentParser:
     tr.add_argument("--file", help="offline study JSON instead of live CT.gov")
     tr.set_defaults(fn=_cmd_trial)
     sub.add_parser("catalysts", help="list data/catalysts.csv").set_defaults(fn=_cmd_catalysts)
+    cli_trading.register(sub)
     return p
 
 
@@ -156,7 +164,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         rc: int = args.fn(args)
     except (ConfigError, LLMError, EdgarConfigError, FetchError, RunwayUnavailableError,
-            CatalystFileError, KeyError) as exc:
+            CatalystFileError, KeyError, BrokerError, ApprovalError, PermissionError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     return rc

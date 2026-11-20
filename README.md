@@ -16,8 +16,9 @@ See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the full design and
 |---|---|---|
 | 0 | Bootstrap: config, schemas, SQLite audit store, LLM switcher | done |
 | 1 | Data layer (CT.gov, EDGAR, runway, catalysts.csv) | done |
-| 2 | Guardrails, brokers, kill-switch | next |
-| 3–10 | Robinhood spike, RAG, agents, sell FSM, backtest, paper, shadow, live | planned |
+| 2 | Guardrail rules, approval tokens, brokers, kill-switch, execution | done |
+| 3 | Robinhood MCP spike (read-only) | next |
+| 4–10 | RAG, agents, sell FSM, backtest, paper, shadow, live | planned |
 
 ## Setup (Windows PowerShell)
 
@@ -41,6 +42,10 @@ python -m biotradeai runway ONCO --facts-file data\fixtures\edgar\companyfacts\O
 python -m biotradeai runway MRNA            # live SEC data (needs SEC_USER_AGENT)
 python -m biotradeai trial NCT04368728      # live ClinicalTrials.gov
 python -m biotradeai catalysts
+python -m biotradeai account                      # Alpaca paper (needs keys)
+python -m biotradeai positions
+python -m biotradeai order ONCO --qty 100 --limit 10.00 --broker fake   # dry run
+python -m biotradeai killswitch status            # trip | reset
 ```
 
 Quality gates (run before every commit):

@@ -79,6 +79,11 @@ CREATE TABLE IF NOT EXISTS killswitch (
     changed_at  TEXT NOT NULL,
     changed_by  TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS killswitch_counters (
+    id                       INTEGER PRIMARY KEY CHECK (id = 1),
+    consecutive_api_errors   INTEGER NOT NULL CHECK (consecutive_api_errors >= 0)
+);
 """
 
 
@@ -133,6 +138,10 @@ class SQLiteStore:
                 "INSERT OR IGNORE INTO killswitch(id, tripped, reason, changed_at, changed_by) "
                 "VALUES (1, 0, NULL, ?, 'init')",
                 (_now(),),
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO killswitch_counters(id, consecutive_api_errors) "
+                "VALUES (1, 0)"
             )
 
     @contextmanager
@@ -237,6 +246,24 @@ class SQLiteStore:
                 "WHERE id = 1",
                 (int(tripped), reason, _now(), changed_by),
             )
+
+    def increment_api_errors(self) -> int:
+        with self._connect() as conn:
+            conn.execute("UPDATE killswitch_counters SET consecutive_api_errors = "
+                         "consecutive_api_errors + 1 WHERE id = 1")
+            n: int = conn.execute("SELECT consecutive_api_errors FROM killswitch_counters "
+                                  "WHERE id = 1").fetchone()[0]
+        return n
+
+    def reset_api_errors(self) -> None:
+        with self._connect() as conn:
+            conn.execute("UPDATE killswitch_counters SET consecutive_api_errors = 0 WHERE id = 1")
+
+    def get_api_errors(self) -> int:
+        with self._connect() as conn:
+            n: int = conn.execute("SELECT consecutive_api_errors FROM killswitch_counters "
+                                  "WHERE id = 1").fetchone()[0]
+        return n
 
     # ------------------------------------------------------------------ positions
 

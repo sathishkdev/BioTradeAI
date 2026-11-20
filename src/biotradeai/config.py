@@ -39,6 +39,7 @@ class OrdersConfig(_Strict):
     # Only "limit" is a legal value. Listing "market" or "stop" fails validation.
     allowed_types: list[Literal["limit"]] = Field(min_length=1)
     allow_extended_hours: bool
+    approval_ttl_minutes: float = Field(gt=0.0, le=60.0)
 
 
 class RunwayConfig(_Strict):

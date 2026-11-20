@@ -87,3 +87,42 @@ Catalyst dates come only from the human-curated `data/catalysts.csv`.
 ## D-016 — Retry/rate limiting with tenacity (2026-11-19)
 Retries on 429/5xx/transport errors with exponential backoff; 404 and other 4xx fail
 immediately. EDGAR is capped at 8 req/s (SEC ceiling is 10), shared across sec.gov hosts.
+
+## D-017 — Phase 2: Alpaca via REST + httpx instead of alpaca-py (2026-11-19)
+The adapter needs six endpoints. Plain `httpx` adds no dependency, works on Python 3.14,
+and lets tests use `httpx.MockTransport`, the same pattern as the data clients. Order POSTs
+are never retried automatically, since a retry could duplicate an order;
+`client_order_id = btai-<approval nonce>` makes a manual re-submit idempotent at Alpaca.
+`alpaca-py` stays listed in the `brokers` extra in case it is needed later.
+
+## D-018 — Robinhood adapter ships mode gating only (2026-11-19)
+Per "do not invent API fields", the field mapping for each Robinhood MCP tool waits for the
+Phase 3 spike. Already in place: `verify_tools()` against `list_tools`, limit-only
+rejection, shadow-mode `place_order` raising *before* any MCP call, and redaction of every
+tool result. Unmapped calls raise `SchemaNotVerifiedError`.
+
+## D-019 — New config key `orders.approval_ttl_minutes: 15` (2026-11-19)
+How long a human approval stays valid. Short, so an approval can't be replayed hours later
+at a stale price. Capped at 60 minutes by the validator.
+
+## D-020 — Rule boundary conventions (2026-11-19)
+Minimums pass at the threshold (EV, runway veto, confidence); maximums pass at the
+threshold (position cap, spread). The drawdown limit trips only when exceeded. The fatal
+runway prune fires strictly below `fatal_runway_months`. TTL is inclusive.
+
+## D-021 — Execution check order and scope (2026-11-19)
+In order: kill-switch -> mode (live blocked until Phase 10) -> order type -> approval token ->
+fresh broker state (blocked account, drawdown, position cap including existing exposure,
+concurrency, no shorting, spread and quote TTL for buys only) -> nonce consumed -> place
+(paper) or review (shadow). Spread is not checked on sells, because an exit must never be
+blocked by an illiquid book. Policy refusals (`OrderRejectedError`, `ShadowModeError`) do
+not count toward the kill-switch's API-error streak; real broker failures do.
+
+## D-022 — Live mode uses pilot caps (2026-11-19)
+`rules.effective_limits` returns `live_gate.pilot_position_pct` / `pilot_max_positions` in
+live mode. Execution currently rejects live mode outright; the live gate lands in Phase 10.
+
+## D-023 — Architecture tests (2026-11-19)
+`tests/unit/test_architecture.py` parses `src/` with `ast` and fails if `place_order` is
+called anywhere except `brokers/execution.py`, or if `agents/` or `graph/` import
+`biotradeai.brokers`.

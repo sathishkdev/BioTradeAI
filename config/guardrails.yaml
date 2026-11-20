@@ -15,6 +15,7 @@ runway:
 orders:
   allowed_types: [limit]
   allow_extended_hours: false   # revisit after Robinhood spike (Phase 3)
+  approval_ttl_minutes: 15      # how long a human approval token stays valid
 tot:
   depth: 3
   beam_width: 2
