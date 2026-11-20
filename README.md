@@ -19,8 +19,9 @@ See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the full design and
 | 2 | Guardrail rules, approval tokens, brokers, kill-switch, execution | done |
 | 4 | RAG: ontology, ingest, hybrid retrieval, tier/conflict resolution | done |
 | 5 | Agents + Tree of Thoughts + LangGraph supervisor | done |
-| 6 | Sell state machine (deterministic) | next |
-| 7–8 | Backtest, Alpaca paper trading | planned |
+| 6 | Sell state machine (deterministic), EDGAR/CT.gov pollers | done |
+| 7 | Backtest and evaluation | next |
+| 8 | Alpaca paper trading | planned |
 | 3, 9, 10 | Robinhood spike, shadow mode, live pilot (needs your accounts) | last |
 
 ## Setup (Windows PowerShell)
@@ -55,6 +56,7 @@ python -m biotradeai rag query ONCO ONC-101 "hepatic safety signals?"
 python -m biotradeai ontology resolve oncotinib   # list | proposals | propose | approve
 python -m biotradeai evaluate --fixture data\fixtures\scenarios\onco.yaml   # ToT -> risk -> approve
 python -m biotradeai evaluate --fixture data\fixtures\scenarios\onco.yaml --llm ollama:llama3.2:3b
+python -m biotradeai sell-replay                  # replay all sell-trigger fixtures
 ```
 
 Quality gates (run before every commit):

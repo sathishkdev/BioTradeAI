@@ -1,0 +1,11 @@
+description: Never hold between readouts. After a positive Phase 2, a scheduled Phase 3 sells the rest.
+position: {ticker: ONCO, qty: 100, entry_price: "10.00", catalyst_event: phase2_readout, catalyst_date: 2026-12-10}
+events:
+  - {kind: price, ts: "2026-12-09T20:00:00+00:00", bid: "10.40", ask: "10.45"}
+  - {kind: outcome, ts: "2026-12-10T12:00:00+00:00", result: positive, source_url: "https://example.com/p2"}
+  - {kind: price, ts: "2026-12-10T15:00:00+00:00", bid: "12.00", ask: "12.05"}
+  - {kind: catalyst_scheduled, ts: "2026-12-20T00:00:00+00:00", event: phase3_readout, catalyst_date: 2028-06-01}
+  - {kind: price, ts: "2026-12-21T15:00:00+00:00", bid: "5.00", ask: "5.05"}
+expected_exits:
+  - {trigger: positive_scale_out, qty: 50, limit: "10.40"}
+  - {trigger: next_catalyst, qty: 50, limit: "12.00"}

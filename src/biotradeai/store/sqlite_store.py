@@ -80,6 +80,20 @@ CREATE TABLE IF NOT EXISTS killswitch (
     changed_by  TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS sell_state (
+    ticker      TEXT PRIMARY KEY,
+    state_json  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS seen_filings (
+    accession   TEXT PRIMARY KEY,
+    ticker      TEXT NOT NULL,
+    form        TEXT NOT NULL,
+    filed_on    TEXT NOT NULL,
+    seen_at     TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS killswitch_counters (
     id                       INTEGER PRIMARY KEY CHECK (id = 1),
     consecutive_api_errors   INTEGER NOT NULL CHECK (consecutive_api_errors >= 0)
@@ -302,6 +316,34 @@ class SQLiteStore:
                 "decision = excluded.decision, evaluated_at = excluded.evaluated_at",
                 (nct_id, ticker, last_completion_date, decision, _now()),
             )
+
+    # ------------------------------------------------------------------ sell machine
+
+    def save_sell_state(self, ticker: str, state: dict[str, Any]) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO sell_state(ticker, state_json, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(ticker) DO UPDATE SET state_json = excluded.state_json, "
+                "updated_at = excluded.updated_at",
+                (ticker, _canonical(state), _now()),
+            )
+
+    def load_sell_state(self, ticker: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            r = conn.execute("SELECT state_json FROM sell_state WHERE ticker = ?",
+                             (ticker,)).fetchone()
+        if r is None:
+            return None
+        out: dict[str, Any] = json.loads(r[0])
+        return out
+
+    def mark_filing_seen(self, accession: str, ticker: str, form: str, filed_on: str) -> bool:
+        """True the first time an accession number is seen, False afterwards."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO seen_filings(accession, ticker, form, filed_on, seen_at) "
+                "VALUES (?, ?, ?, ?, ?)", (accession, ticker, form, filed_on, _now()))
+            return cur.rowcount == 1
 
     def get_nct(self, nct_id: str) -> dict[str, Any] | None:
         with self._connect() as conn:

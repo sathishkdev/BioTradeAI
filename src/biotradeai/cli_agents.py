@@ -31,8 +31,10 @@ from biotradeai.graph.buy_graph import (
     sqlite_checkpointer,
     start_run,
 )
+from biotradeai.graph.sell_graph import SellEngine
 from biotradeai.scenario_fixtures import load_fixture
 from biotradeai.schemas import ApprovalToken, Decision, StagedOrder
+from biotradeai.sell_replay import load_replay
 from biotradeai.store.sqlite_store import SQLiteStore
 
 
@@ -142,7 +144,40 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     return 0 if ex.get("status") == "placed" else 1
 
 
+def cmd_sell_replay(args: argparse.Namespace) -> int:
+    cfg = load_config()
+    target = Path(args.fixture)
+    paths = sorted(target.glob("*.yaml")) if target.is_dir() else [target]
+    store = SQLiteStore()
+    bad = 0
+    for p in paths:
+        r = load_replay(p)
+        pos = r.position
+        final, exits = SellEngine(cfg, store).process(pos, r.events, run_id=f"replay-{r.name}")
+        got = [(e.trigger, e.qty, e.order.limit_price if e.order else None) for e in exits]
+        want = [(x.trigger, x.qty, x.limit_price) for x in r.expected]
+        ok = got == want
+        bad += not ok
+        print(f"[{'ok' if ok else 'MISMATCH'}] {r.name}: {r.description}")
+        print(f"     {pos.ticker} {pos.qty} sh @ {pos.entry_price}, {pos.catalyst_event} "
+              f"{pos.catalyst_date}  ->  {final.state.value}, {final.qty} left")
+        for e in exits:
+            price = f"LIMIT @ {e.order.limit_price}" if e.order else "needs a quote"
+            print(f"     {e.ts:%Y-%m-%d %H:%M}  SELL {e.qty:>4} {price:<16} "
+                  f"{e.trigger.value}: {e.reason}")
+        if not ok:
+            print(f"     expected: {want}")
+    print()
+    print(f"{len(paths) - bad}/{len(paths)} replays matched. Orders are staged only "
+          "(execution needs approval).")
+    return 1 if bad else 0
+
+
 def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    sr = sub.add_parser("sell-replay", help="replay sell-machine event fixtures")
+    sr.add_argument("--fixture", default=str(Path("data/fixtures/sell")),
+                    help="a replay YAML or a folder of them")
+    sr.set_defaults(fn=cmd_sell_replay)
     ev = sub.add_parser("evaluate", help="run Research ToT -> Risk -> approval on a fixture")
     ev.add_argument("--fixture", required=True,
                     help=f"scenario YAML, e.g. {Path('data/fixtures/scenarios/onco.yaml')}")

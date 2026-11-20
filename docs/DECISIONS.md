@@ -258,3 +258,56 @@ and runway math. The run uses an in-memory FakeBroker and clock = the fixture's
 `as_of`. Building inputs from live retrieval, EDGAR and broker quotes
 (`biotradeai/inputs.py`) is written, but it is wired into a CLI command in Phase 8, once
 Alpaca keys exist.
+
+## D-043 — trailing_stop_pct stays at the 0.10 PLACEHOLDER (2026-11-20)
+The user started Phase 6 without choosing a value, so 10% below the high-water bid is
+used. Change `sell.trailing_stop_pct` in config to set it deliberately.
+
+## D-044 — Sell machine is plain Python, not LangGraph (2026-11-20)
+The sell side has no LLM, no branching on model output and no human pause, so a pure
+function `step(position, event, cfg)` is simpler to test and replay than a graph. It
+still lives in `graph/sell_graph.py` as the plan's layout says. `SellEngine` writes
+every exit and state change to the audit log, and saves position state in a new
+`sell_state` table.
+
+## D-045 — How the sell triggers were interpreted (2026-11-20)
+* Run-up: sells 100%, and only on ticks dated strictly before the catalyst date. It
+  fires AT the target (bid >= entry x 1.30). The bid is used because that is the
+  price we could sell at.
+* Readout: `positive` sells floor(qty x scale_out_fraction), at least 1 share, then
+  trails the rest. `negative`, `crl` and `mixed` sell 100%. Mixed counts as a failure
+  because it is the conservative choice.
+* Trailing stop: the high-water mark is the highest bid since the readout, starting at
+  the last bid. It fires AT high x (1 - trailing_stop_pct).
+* Time-stop: the slip is measured from the primary completion date at entry, so it
+  adds up across several slips. A month is 30.44 days. It fires only when the slip
+  strictly EXCEEDS completion_delay_months.
+* "Never hold between Phase 2 and Phase 3 readouts": when a `catalyst_scheduled` event
+  arrives while the remainder is being trailed, the remainder is sold. A new trade must
+  then come from a fresh buy evaluation.
+
+## D-046 — Exit orders: SELL LIMIT at the bid, staged only (2026-11-20)
+The limit price is the last bid rounded down to the cent, which is marketable but is
+never a market order. Every exit order is checked with `rules.check_order_type`. An
+exit that comes before any quote is logged as `needs_quote`, with no price. Exits are
+staged; placing them goes through `execution.py` with an approval token, which is
+wired in Phase 8. Open point for Phase 8: whether urgent exits (CRL, dilution) need
+the same typed approval as buys.
+
+## D-047 — What counts as a dilutive filing (2026-11-20)
+* By form alone: S-3, S-3ASR, S-3/A, S-1, S-1/A and 424B1-5. The plan names S-3;
+  S-1 and 424B prospectus supplements are added because they are the same event,
+  so this errs toward selling.
+* An S-3 that only registers resales by existing holders also triggers. That is
+  conservative.
+* An 8-K counts only if its text names an equity offering (underwritten, registered
+  direct, ATM, private placement, pre-funded warrants, sale or issuance of shares).
+  This is checked with a regex in `events.classify_filing`.
+
+## D-048 — Pollers (2026-11-20)
+* `data/pollers.py`, FilingPoller: reports each EDGAR accession once, tracked in a new
+  `seen_filings` table. It downloads only 8-K documents, to stay within SEC's rate
+  limit.
+* TrialDatePoller: compares the CT.gov primary completion date with `evaluated_ncts`.
+  The first sighting only records the baseline.
+* No new dependencies.

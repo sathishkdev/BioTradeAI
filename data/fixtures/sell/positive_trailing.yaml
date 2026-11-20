@@ -1,0 +1,12 @@
+description: Positive readout -> sell 50%, trail the rest; 10% off the high sells the remainder.
+position: {ticker: ONCO, qty: 501, entry_price: "10.00", catalyst_event: phase3_readout, catalyst_date: 2027-01-15}
+events:
+  - {kind: price, ts: "2027-01-14T20:00:00+00:00", bid: "10.50", ask: "10.52"}
+  - {kind: outcome, ts: "2027-01-15T12:00:00+00:00", result: positive, source_url: "https://example.com/pr"}
+  - {kind: price, ts: "2027-01-15T15:00:00+00:00", bid: "14.00", ask: "14.05"}
+  - {kind: price, ts: "2027-01-16T15:00:00+00:00", bid: "12.61", ask: "12.65"}
+  - {kind: price, ts: "2027-01-17T15:00:00+00:00", bid: "12.60", ask: "12.64"}
+  - {kind: price, ts: "2027-01-18T15:00:00+00:00", bid: "11.00", ask: "11.04"}
+expected_exits:
+  - {trigger: positive_scale_out, qty: 250, limit: "10.50"}
+  - {trigger: trailing_stop, qty: 251, limit: "12.60"}

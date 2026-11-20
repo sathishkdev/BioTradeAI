@@ -1,0 +1,10 @@
+description: Completion pushed 5 months -> hold; pushed 6.5 months from the baseline -> sell 100%.
+position: {ticker: SLIP, qty: 200, entry_price: "8.00", catalyst_event: phase3_readout, catalyst_date: 2027-01-01,
+           nct_id: NCT09990009, baseline_completion: 2026-12-01}
+events:
+  - {kind: price, ts: "2026-11-25T15:00:00+00:00", bid: "7.50", ask: "7.55"}
+  - {kind: completion_date, ts: "2026-11-26T00:00:00+00:00", nct_id: NCT09990009, old_date: 2026-12-01, new_date: 2027-05-01}
+  - {kind: completion_date, ts: "2026-11-27T00:00:00+00:00", nct_id: NCT09990001, old_date: 2026-12-01, new_date: 2028-01-01}
+  - {kind: completion_date, ts: "2026-12-10T00:00:00+00:00", nct_id: NCT09990009, old_date: 2027-05-01, new_date: 2027-06-15}
+expected_exits:
+  - {trigger: time_stop, qty: 200, limit: "7.50"}

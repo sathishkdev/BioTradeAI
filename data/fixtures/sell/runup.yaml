@@ -1,0 +1,10 @@
+description: Pre-catalyst run-up hits +30% before the event -> sell 100%. Exactly at target sells.
+position: {ticker: ONCO, qty: 500, entry_price: "10.00", catalyst_event: phase3_readout, catalyst_date: 2027-01-15}
+events:
+  - {kind: price, ts: "2026-12-01T15:00:00+00:00", bid: "11.00", ask: "11.02"}
+  - {kind: price, ts: "2026-12-02T15:00:00+00:00", bid: "12.99", ask: "13.01"}
+  - {kind: price, ts: "2026-12-02T16:00:00+00:00", ticker: OTHR, bid: "50.00", ask: "50.10"}
+  - {kind: price, ts: "2026-12-03T15:00:00+00:00", bid: "13.00", ask: "13.02"}
+  - {kind: price, ts: "2026-12-04T15:00:00+00:00", bid: "14.00", ask: "14.02"}
+expected_exits:
+  - {trigger: profit_target, qty: 500, limit: "13.00"}

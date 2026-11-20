@@ -1,0 +1,8 @@
+description: An 8-K announcing an underwritten public offering sells 100%.
+position: {ticker: DLTN, qty: 400, entry_price: "5.00", catalyst_event: phase3_readout, catalyst_date: 2027-03-01}
+events:
+  - {kind: price, ts: "2026-12-01T15:00:00+00:00", bid: "4.80", ask: "4.82"}
+  - {kind: filing, ts: "2026-12-03T00:00:00+00:00", form: 8-K, accession: 0009990003-26-000110,
+     text: "The Company announced the pricing of an underwritten public offering of 10,000,000 shares of its common stock."}
+expected_exits:
+  - {trigger: dilution, qty: 400, limit: "4.80"}

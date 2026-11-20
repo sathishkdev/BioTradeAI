@@ -1,0 +1,5 @@
+description: A +30% bid ON the catalyst date is not a pre-catalyst run-up; no exit until the outcome.
+position: {ticker: ONCO, qty: 500, entry_price: "10.00", catalyst_event: phase3_readout, catalyst_date: 2027-01-15}
+events:
+  - {kind: price, ts: "2027-01-15T15:00:00+00:00", bid: "13.50", ask: "13.52"}
+expected_exits: []

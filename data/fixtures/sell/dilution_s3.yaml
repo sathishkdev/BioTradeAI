@@ -1,0 +1,9 @@
+description: A non-offering 8-K is ignored; a new S-3 shelf registration sells 100%.
+position: {ticker: DLTN, qty: 400, entry_price: "5.00", catalyst_event: phase3_readout, catalyst_date: 2027-03-01}
+events:
+  - {kind: price, ts: "2026-12-01T15:00:00+00:00", bid: "5.10", ask: "5.12"}
+  - {kind: filing, ts: "2026-12-02T00:00:00+00:00", form: 8-K, accession: 0009990003-26-000101,
+     text: "On December 1, 2026 the Board appointed Jane Roe as Chief Medical Officer."}
+  - {kind: filing, ts: "2026-12-05T00:00:00+00:00", form: S-3, accession: 0009990003-26-000102}
+expected_exits:
+  - {trigger: dilution, qty: 400, limit: "5.10"}

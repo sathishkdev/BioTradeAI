@@ -1,0 +1,8 @@
+description: CRL at the PDUFA date -> sell 100% with a limit at the bid (never a market order).
+position: {ticker: PDUF, qty: 300, entry_price: "20.00", catalyst_event: pdufa, catalyst_date: 2027-02-01}
+events:
+  - {kind: price, ts: "2027-02-01T21:30:00+00:00", bid: "8.137", ask: "8.40"}
+  - {kind: outcome, ts: "2027-02-01T22:00:00+00:00", result: crl, source_url: "https://example.com/crl"}
+  - {kind: price, ts: "2027-02-02T15:00:00+00:00", bid: "7.00", ask: "7.10"}
+expected_exits:
+  - {trigger: negative_readout, qty: 300, limit: "8.13"}
