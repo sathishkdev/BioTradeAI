@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "biotradeai"
-version = "0.0.1"
+version = "0.1.0"
 description = "Multi-agent decision support for biotech catalyst trading (paper-first, human-in-the-loop)."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -40,7 +40,8 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra -m 'not integration'"
-filterwarnings = ["ignore::DeprecationWarning:langsmith.*"]
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["ignore::DeprecationWarning:langsmith.*", "ignore::DeprecationWarning:chromadb.*"]
 markers = [
     "integration: needs network or a running local service (Ollama, broker sandbox). Skipped by default; run with -m integration",
 ]

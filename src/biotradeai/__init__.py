@@ -3,4 +3,4 @@
 Decision support only, not financial advice. Paper trading is the default.
 """
 
-__version__ = "0.0.1"
+__version__ = "0.1.0"
