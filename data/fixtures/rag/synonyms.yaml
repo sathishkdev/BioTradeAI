@@ -1,0 +1,154 @@
+# Fixture ontology for RAG tests (synthetic drugs).
+entities:
+  ENT-QCAR-101:
+    names:
+    - CAR-101
+    - trimatinib
+    ticker: QCAR
+  ENT-QCAR-201:
+    names:
+    - CAR-201
+    - trimamab
+    ticker: QCAR
+  ENT-QCAR-301:
+    names:
+    - CAR-301
+    - trimastat
+    ticker: QCAR
+  ENT-QDER-101:
+    names:
+    - DER-101
+    - savatinib
+    ticker: QDER
+  ENT-QDER-201:
+    names:
+    - DER-201
+    - savamab
+    ticker: QDER
+  ENT-QDER-301:
+    names:
+    - DER-301
+    - savastat
+    ticker: QDER
+  ENT-QGEN-101:
+    names:
+    - GEN-101
+    - quentinib
+    ticker: QGEN
+  ENT-QGEN-201:
+    names:
+    - GEN-201
+    - quenmab
+    ticker: QGEN
+  ENT-QGEN-301:
+    names:
+    - GEN-301
+    - quenstat
+    ticker: QGEN
+  ENT-QHEM-101:
+    names:
+    - HEM-101
+    - umbratinib
+    ticker: QHEM
+  ENT-QHEM-201:
+    names:
+    - HEM-201
+    - umbramab
+    ticker: QHEM
+  ENT-QHEM-301:
+    names:
+    - HEM-301
+    - umbrastat
+    ticker: QHEM
+  ENT-QIMM-101:
+    names:
+    - IMM-101
+    - palutinib
+    ticker: QIMM
+  ENT-QIMM-201:
+    names:
+    - IMM-201
+    - palumab
+    ticker: QIMM
+  ENT-QIMM-301:
+    names:
+    - IMM-301
+    - palustat
+    ticker: QIMM
+  ENT-QNEU-101:
+    names:
+    - NEU-101
+    - venotinib
+    ticker: QNEU
+  ENT-QNEU-201:
+    names:
+    - NEU-201
+    - venomab
+    ticker: QNEU
+  ENT-QNEU-301:
+    names:
+    - NEU-301
+    - venostat
+    ticker: QNEU
+  ENT-QONC-101:
+    names:
+    - ONC-101
+    - zolartinib
+    previous_codes:
+    - ZX-7
+    ticker: QONC
+  ENT-QONC-201:
+    names:
+    - ONC-201
+    - zolarmab
+    ticker: QONC
+  ENT-QONC-301:
+    names:
+    - ONC-301
+    - zolarstat
+    ticker: QONC
+  ENT-QOPH-101:
+    names:
+    - OPH-101
+    - tolutinib
+    ticker: QOPH
+  ENT-QOPH-201:
+    names:
+    - OPH-201
+    - tolumab
+    ticker: QOPH
+  ENT-QOPH-301:
+    names:
+    - OPH-301
+    - tolustat
+    ticker: QOPH
+  ENT-QRAR-101:
+    names:
+    - RAR-101
+    - ribotinib
+    ticker: QRAR
+  ENT-QRAR-201:
+    names:
+    - RAR-201
+    - ribomab
+    ticker: QRAR
+  ENT-QRAR-301:
+    names:
+    - RAR-301
+    - ribostat
+    ticker: QRAR
+  ENT-QVAX-101:
+    names:
+    - VAX-101
+    - xelitinib
+    ticker: QVAX
+  ENT-QVAX-201:
+    names:
+    - VAX-201
+    - xelimab
+    ticker: QVAX
+  ENT-QVAX-301:
+    names:
+    - VAX-301
+    - xelistat
+    ticker: QVAX

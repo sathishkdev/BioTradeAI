@@ -25,7 +25,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from biotradeai import cli_trading
+from biotradeai import cli_rag, cli_trading
 from biotradeai.agents.llm import LLMError, LLMMessage, make_llm_client, resolve_spec
 from biotradeai.brokers.approval import ApprovalError
 from biotradeai.brokers.base import BrokerError
@@ -37,6 +37,8 @@ from biotradeai.data.http import FetchError
 from biotradeai.data.runway import RunwayUnavailableError, compute_runway
 from biotradeai.guardrails import rules
 from biotradeai.paths import REPO_ROOT
+from biotradeai.rag.embeddings import EmbeddingError
+from biotradeai.rag.ontology import OntologyError
 from biotradeai.store.sqlite_store import SQLiteStore
 
 
@@ -155,6 +157,7 @@ def build_parser() -> argparse.ArgumentParser:
     tr.set_defaults(fn=_cmd_trial)
     sub.add_parser("catalysts", help="list data/catalysts.csv").set_defaults(fn=_cmd_catalysts)
     cli_trading.register(sub)
+    cli_rag.register(sub)
     return p
 
 
@@ -164,7 +167,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         rc: int = args.fn(args)
     except (ConfigError, LLMError, EdgarConfigError, FetchError, RunwayUnavailableError,
-            CatalystFileError, KeyError, BrokerError, ApprovalError, PermissionError) as exc:
+            CatalystFileError, KeyError, BrokerError, ApprovalError, PermissionError,
+            OntologyError, EmbeddingError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     return rc

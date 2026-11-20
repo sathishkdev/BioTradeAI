@@ -1,0 +1,611 @@
+[
+ {
+  "id": "q0-specific",
+  "ticker": "QONC",
+  "drug": "zolartinib",
+  "query": "Is there a liver injury risk with zolartinib?",
+  "relevant": [
+   "ENT-QONC-101:risk10k",
+   "ENT-QONC-101:riskabs"
+  ]
+ },
+ {
+  "id": "q0-generic",
+  "ticker": "QONC",
+  "drug": "ONC-101",
+  "query": "What are the specific safety and regulatory problems reported for ONC-101 in clinical trials?",
+  "relevant": [
+   "ENT-QONC-101:risk10k",
+   "ENT-QONC-101:riskabs"
+  ]
+ },
+ {
+  "id": "q1-specific",
+  "ticker": "QONC",
+  "drug": "zolarmab",
+  "query": "Is there a cardiac QT interval risk with zolarmab?",
+  "relevant": [
+   "ENT-QONC-201:risk10k",
+   "ENT-QONC-201:riskabs"
+  ]
+ },
+ {
+  "id": "q1-generic",
+  "ticker": "QONC",
+  "drug": "ONC-201",
+  "query": "What are the specific safety and regulatory problems reported for ONC-201 in clinical trials?",
+  "relevant": [
+   "ENT-QONC-201:risk10k",
+   "ENT-QONC-201:riskabs"
+  ]
+ },
+ {
+  "id": "q2-specific",
+  "ticker": "QONC",
+  "drug": "zolarstat",
+  "query": "Is there a FDA clinical hold risk with zolarstat?",
+  "relevant": [
+   "ENT-QONC-301:risk10k",
+   "ENT-QONC-301:riskabs"
+  ]
+ },
+ {
+  "id": "q2-generic",
+  "ticker": "QONC",
+  "drug": "ONC-301",
+  "query": "What are the specific safety and regulatory problems reported for ONC-301 in clinical trials?",
+  "relevant": [
+   "ENT-QONC-301:risk10k",
+   "ENT-QONC-301:riskabs"
+  ]
+ },
+ {
+  "id": "q3-specific",
+  "ticker": "QNEU",
+  "drug": "venotinib",
+  "query": "Is there a manufacturing deficiencies at the plant risk with venotinib?",
+  "relevant": [
+   "ENT-QNEU-101:risk10k",
+   "ENT-QNEU-101:riskabs"
+  ]
+ },
+ {
+  "id": "q3-generic",
+  "ticker": "QNEU",
+  "drug": "NEU-101",
+  "query": "What are the specific safety and regulatory problems reported for NEU-101 in clinical trials?",
+  "relevant": [
+   "ENT-QNEU-101:risk10k",
+   "ENT-QNEU-101:riskabs"
+  ]
+ },
+ {
+  "id": "q4-specific",
+  "ticker": "QNEU",
+  "drug": "venomab",
+  "query": "Is there a low neutrophil counts risk with venomab?",
+  "relevant": [
+   "ENT-QNEU-201:risk10k",
+   "ENT-QNEU-201:riskabs"
+  ]
+ },
+ {
+  "id": "q4-generic",
+  "ticker": "QNEU",
+  "drug": "NEU-201",
+  "query": "What are the specific safety and regulatory problems reported for NEU-201 in clinical trials?",
+  "relevant": [
+   "ENT-QNEU-201:risk10k",
+   "ENT-QNEU-201:riskabs"
+  ]
+ },
+ {
+  "id": "q5-specific",
+  "ticker": "QNEU",
+  "drug": "venostat",
+  "query": "Is there a cytokine release syndrome risk with venostat?",
+  "relevant": [
+   "ENT-QNEU-301:risk10k",
+   "ENT-QNEU-301:riskabs"
+  ]
+ },
+ {
+  "id": "q5-generic",
+  "ticker": "QNEU",
+  "drug": "NEU-301",
+  "query": "What are the specific safety and regulatory problems reported for NEU-301 in clinical trials?",
+  "relevant": [
+   "ENT-QNEU-301:risk10k",
+   "ENT-QNEU-301:riskabs"
+  ]
+ },
+ {
+  "id": "q6-specific",
+  "ticker": "QCAR",
+  "drug": "trimatinib",
+  "query": "Is there a suicidal ideation risk with trimatinib?",
+  "relevant": [
+   "ENT-QCAR-101:risk10k",
+   "ENT-QCAR-101:riskabs"
+  ]
+ },
+ {
+  "id": "q6-generic",
+  "ticker": "QCAR",
+  "drug": "CAR-101",
+  "query": "What are the specific safety and regulatory problems reported for CAR-101 in clinical trials?",
+  "relevant": [
+   "ENT-QCAR-101:risk10k",
+   "ENT-QCAR-101:riskabs"
+  ]
+ },
+ {
+  "id": "q7-specific",
+  "ticker": "QCAR",
+  "drug": "trimamab",
+  "query": "Is there a secondary endpoints risk with trimamab?",
+  "relevant": [
+   "ENT-QCAR-201:risk10k",
+   "ENT-QCAR-201:riskabs"
+  ]
+ },
+ {
+  "id": "q7-generic",
+  "ticker": "QCAR",
+  "drug": "CAR-201",
+  "query": "What are the specific safety and regulatory problems reported for CAR-201 in clinical trials?",
+  "relevant": [
+   "ENT-QCAR-201:risk10k",
+   "ENT-QCAR-201:riskabs"
+  ]
+ },
+ {
+  "id": "q8-specific",
+  "ticker": "QCAR",
+  "drug": "trimastat",
+  "query": "Is there a lack of a randomized control risk with trimastat?",
+  "relevant": [
+   "ENT-QCAR-301:risk10k",
+   "ENT-QCAR-301:riskabs"
+  ]
+ },
+ {
+  "id": "q8-generic",
+  "ticker": "QCAR",
+  "drug": "CAR-301",
+  "query": "What are the specific safety and regulatory problems reported for CAR-301 in clinical trials?",
+  "relevant": [
+   "ENT-QCAR-301:risk10k",
+   "ENT-QCAR-301:riskabs"
+  ]
+ },
+ {
+  "id": "q9-specific",
+  "ticker": "QIMM",
+  "drug": "palutinib",
+  "query": "Is there a anti-drug antibodies risk with palutinib?",
+  "relevant": [
+   "ENT-QIMM-101:risk10k",
+   "ENT-QIMM-101:riskabs"
+  ]
+ },
+ {
+  "id": "q9-generic",
+  "ticker": "QIMM",
+  "drug": "IMM-101",
+  "query": "What are the specific safety and regulatory problems reported for IMM-101 in clinical trials?",
+  "relevant": [
+   "ENT-QIMM-101:risk10k",
+   "ENT-QIMM-101:riskabs"
+  ]
+ },
+ {
+  "id": "q10-specific",
+  "ticker": "QIMM",
+  "drug": "palumab",
+  "query": "Is there a eye and retinal damage risk with palumab?",
+  "relevant": [
+   "ENT-QIMM-201:risk10k",
+   "ENT-QIMM-201:riskabs"
+  ]
+ },
+ {
+  "id": "q10-generic",
+  "ticker": "QIMM",
+  "drug": "IMM-201",
+  "query": "What are the specific safety and regulatory problems reported for IMM-201 in clinical trials?",
+  "relevant": [
+   "ENT-QIMM-201:risk10k",
+   "ENT-QIMM-201:riskabs"
+  ]
+ },
+ {
+  "id": "q11-specific",
+  "ticker": "QIMM",
+  "drug": "palustat",
+  "query": "Is there a low platelet counts risk with palustat?",
+  "relevant": [
+   "ENT-QIMM-301:risk10k",
+   "ENT-QIMM-301:riskabs"
+  ]
+ },
+ {
+  "id": "q11-generic",
+  "ticker": "QIMM",
+  "drug": "IMM-301",
+  "query": "What are the specific safety and regulatory problems reported for IMM-301 in clinical trials?",
+  "relevant": [
+   "ENT-QIMM-301:risk10k",
+   "ENT-QIMM-301:riskabs"
+  ]
+ },
+ {
+  "id": "q12-specific",
+  "ticker": "QGEN",
+  "drug": "quentinib",
+  "query": "Is there a myelosuppression risk with quentinib?",
+  "relevant": [
+   "ENT-QGEN-101:risk10k",
+   "ENT-QGEN-101:riskabs"
+  ]
+ },
+ {
+  "id": "q12-generic",
+  "ticker": "QGEN",
+  "drug": "GEN-101",
+  "query": "What are the specific safety and regulatory problems reported for GEN-101 in clinical trials?",
+  "relevant": [
+   "ENT-QGEN-101:risk10k",
+   "ENT-QGEN-101:riskabs"
+  ]
+ },
+ {
+  "id": "q13-specific",
+  "ticker": "QGEN",
+  "drug": "quenmab",
+  "query": "Is there a kidney damage risk with quenmab?",
+  "relevant": [
+   "ENT-QGEN-201:risk10k",
+   "ENT-QGEN-201:riskabs"
+  ]
+ },
+ {
+  "id": "q13-generic",
+  "ticker": "QGEN",
+  "drug": "GEN-201",
+  "query": "What are the specific safety and regulatory problems reported for GEN-201 in clinical trials?",
+  "relevant": [
+   "ENT-QGEN-201:risk10k",
+   "ENT-QGEN-201:riskabs"
+  ]
+ },
+ {
+  "id": "q14-specific",
+  "ticker": "QGEN",
+  "drug": "quenstat",
+  "query": "Is there a pancreatitis risk with quenstat?",
+  "relevant": [
+   "ENT-QGEN-301:risk10k",
+   "ENT-QGEN-301:riskabs"
+  ]
+ },
+ {
+  "id": "q14-generic",
+  "ticker": "QGEN",
+  "drug": "GEN-301",
+  "query": "What are the specific safety and regulatory problems reported for GEN-301 in clinical trials?",
+  "relevant": [
+   "ENT-QGEN-301:risk10k",
+   "ENT-QGEN-301:riskabs"
+  ]
+ },
+ {
+  "id": "q15-specific",
+  "ticker": "QRAR",
+  "drug": "ribotinib",
+  "query": "Is there a off-target edits risk with ribotinib?",
+  "relevant": [
+   "ENT-QRAR-101:risk10k",
+   "ENT-QRAR-101:riskabs"
+  ]
+ },
+ {
+  "id": "q15-generic",
+  "ticker": "QRAR",
+  "drug": "RAR-101",
+  "query": "What are the specific safety and regulatory problems reported for RAR-101 in clinical trials?",
+  "relevant": [
+   "ENT-QRAR-101:risk10k",
+   "ENT-QRAR-101:riskabs"
+  ]
+ },
+ {
+  "id": "q16-specific",
+  "ticker": "QRAR",
+  "drug": "ribomab",
+  "query": "Is there a vector integration and cancer risk with ribomab?",
+  "relevant": [
+   "ENT-QRAR-201:risk10k",
+   "ENT-QRAR-201:riskabs"
+  ]
+ },
+ {
+  "id": "q16-generic",
+  "ticker": "QRAR",
+  "drug": "RAR-201",
+  "query": "What are the specific safety and regulatory problems reported for RAR-201 in clinical trials?",
+  "relevant": [
+   "ENT-QRAR-201:risk10k",
+   "ENT-QRAR-201:riskabs"
+  ]
+ },
+ {
+  "id": "q17-specific",
+  "ticker": "QRAR",
+  "drug": "ribostat",
+  "query": "Is there a injection site reactions risk with ribostat?",
+  "relevant": [
+   "ENT-QRAR-301:risk10k",
+   "ENT-QRAR-301:riskabs"
+  ]
+ },
+ {
+  "id": "q17-generic",
+  "ticker": "QRAR",
+  "drug": "RAR-301",
+  "query": "What are the specific safety and regulatory problems reported for RAR-301 in clinical trials?",
+  "relevant": [
+   "ENT-QRAR-301:risk10k",
+   "ENT-QRAR-301:riskabs"
+  ]
+ },
+ {
+  "id": "q18-specific",
+  "ticker": "QDER",
+  "drug": "savatinib",
+  "query": "Is there a anaphylaxis risk with savatinib?",
+  "relevant": [
+   "ENT-QDER-101:risk10k",
+   "ENT-QDER-101:riskabs"
+  ]
+ },
+ {
+  "id": "q18-generic",
+  "ticker": "QDER",
+  "drug": "DER-101",
+  "query": "What are the specific safety and regulatory problems reported for DER-101 in clinical trials?",
+  "relevant": [
+   "ENT-QDER-101:risk10k",
+   "ENT-QDER-101:riskabs"
+  ]
+ },
+ {
+  "id": "q19-specific",
+  "ticker": "QDER",
+  "drug": "savamab",
+  "query": "Is there a CYP3A4 drug interactions risk with savamab?",
+  "relevant": [
+   "ENT-QDER-201:risk10k",
+   "ENT-QDER-201:riskabs"
+  ]
+ },
+ {
+  "id": "q19-generic",
+  "ticker": "QDER",
+  "drug": "DER-201",
+  "query": "What are the specific safety and regulatory problems reported for DER-201 in clinical trials?",
+  "relevant": [
+   "ENT-QDER-201:risk10k",
+   "ENT-QDER-201:riskabs"
+  ]
+ },
+ {
+  "id": "q20-specific",
+  "ticker": "QDER",
+  "drug": "savastat",
+  "query": "Is there a high placebo response risk with savastat?",
+  "relevant": [
+   "ENT-QDER-301:risk10k",
+   "ENT-QDER-301:riskabs"
+  ]
+ },
+ {
+  "id": "q20-generic",
+  "ticker": "QDER",
+  "drug": "DER-301",
+  "query": "What are the specific safety and regulatory problems reported for DER-301 in clinical trials?",
+  "relevant": [
+   "ENT-QDER-301:risk10k",
+   "ENT-QDER-301:riskabs"
+  ]
+ },
+ {
+  "id": "q21-specific",
+  "ticker": "QOPH",
+  "drug": "tolutinib",
+  "query": "Is there a medication errors risk with tolutinib?",
+  "relevant": [
+   "ENT-QOPH-101:risk10k",
+   "ENT-QOPH-101:riskabs"
+  ]
+ },
+ {
+  "id": "q21-generic",
+  "ticker": "QOPH",
+  "drug": "OPH-101",
+  "query": "What are the specific safety and regulatory problems reported for OPH-101 in clinical trials?",
+  "relevant": [
+   "ENT-QOPH-101:risk10k",
+   "ENT-QOPH-101:riskabs"
+  ]
+ },
+ {
+  "id": "q22-specific",
+  "ticker": "QOPH",
+  "drug": "tolumab",
+  "query": "Is there a heart failure risk with tolumab?",
+  "relevant": [
+   "ENT-QOPH-201:risk10k",
+   "ENT-QOPH-201:riskabs"
+  ]
+ },
+ {
+  "id": "q22-generic",
+  "ticker": "QOPH",
+  "drug": "OPH-201",
+  "query": "What are the specific safety and regulatory problems reported for OPH-201 in clinical trials?",
+  "relevant": [
+   "ENT-QOPH-201:risk10k",
+   "ENT-QOPH-201:riskabs"
+  ]
+ },
+ {
+  "id": "q23-specific",
+  "ticker": "QOPH",
+  "drug": "tolustat",
+  "query": "Is there a lung inflammation risk with tolustat?",
+  "relevant": [
+   "ENT-QOPH-301:risk10k",
+   "ENT-QOPH-301:riskabs"
+  ]
+ },
+ {
+  "id": "q23-generic",
+  "ticker": "QOPH",
+  "drug": "OPH-301",
+  "query": "What are the specific safety and regulatory problems reported for OPH-301 in clinical trials?",
+  "relevant": [
+   "ENT-QOPH-301:risk10k",
+   "ENT-QOPH-301:riskabs"
+  ]
+ },
+ {
+  "id": "q24-specific",
+  "ticker": "QHEM",
+  "drug": "umbratinib",
+  "query": "Is there a high blood sugar risk with umbratinib?",
+  "relevant": [
+   "ENT-QHEM-101:risk10k",
+   "ENT-QHEM-101:riskabs"
+  ]
+ },
+ {
+  "id": "q24-generic",
+  "ticker": "QHEM",
+  "drug": "HEM-101",
+  "query": "What are the specific safety and regulatory problems reported for HEM-101 in clinical trials?",
+  "relevant": [
+   "ENT-QHEM-101:risk10k",
+   "ENT-QHEM-101:riskabs"
+  ]
+ },
+ {
+  "id": "q25-specific",
+  "ticker": "QHEM",
+  "drug": "umbramab",
+  "query": "Is there a nerve damage risk with umbramab?",
+  "relevant": [
+   "ENT-QHEM-201:risk10k",
+   "ENT-QHEM-201:riskabs"
+  ]
+ },
+ {
+  "id": "q25-generic",
+  "ticker": "QHEM",
+  "drug": "HEM-201",
+  "query": "What are the specific safety and regulatory problems reported for HEM-201 in clinical trials?",
+  "relevant": [
+   "ENT-QHEM-201:risk10k",
+   "ENT-QHEM-201:riskabs"
+  ]
+ },
+ {
+  "id": "q26-specific",
+  "ticker": "QHEM",
+  "drug": "umbrastat",
+  "query": "Is there a birth defects risk with umbrastat?",
+  "relevant": [
+   "ENT-QHEM-301:risk10k",
+   "ENT-QHEM-301:riskabs"
+  ]
+ },
+ {
+  "id": "q26-generic",
+  "ticker": "QHEM",
+  "drug": "HEM-301",
+  "query": "What are the specific safety and regulatory problems reported for HEM-301 in clinical trials?",
+  "relevant": [
+   "ENT-QHEM-301:risk10k",
+   "ENT-QHEM-301:riskabs"
+  ]
+ },
+ {
+  "id": "q27-specific",
+  "ticker": "QVAX",
+  "drug": "xelitinib",
+  "query": "Is there a single-source raw material risk with xelitinib?",
+  "relevant": [
+   "ENT-QVAX-101:risk10k",
+   "ENT-QVAX-101:riskabs"
+  ]
+ },
+ {
+  "id": "q27-generic",
+  "ticker": "QVAX",
+  "drug": "VAX-101",
+  "query": "What are the specific safety and regulatory problems reported for VAX-101 in clinical trials?",
+  "relevant": [
+   "ENT-QVAX-101:risk10k",
+   "ENT-QVAX-101:riskabs"
+  ]
+ },
+ {
+  "id": "q28-specific",
+  "ticker": "QVAX",
+  "drug": "xelimab",
+  "query": "Is there a regulatory review extension risk with xelimab?",
+  "relevant": [
+   "ENT-QVAX-201:risk10k",
+   "ENT-QVAX-201:riskabs"
+  ]
+ },
+ {
+  "id": "q28-generic",
+  "ticker": "QVAX",
+  "drug": "VAX-201",
+  "query": "What are the specific safety and regulatory problems reported for VAX-201 in clinical trials?",
+  "relevant": [
+   "ENT-QVAX-201:risk10k",
+   "ENT-QVAX-201:riskabs"
+  ]
+ },
+ {
+  "id": "q29-specific",
+  "ticker": "QVAX",
+  "drug": "xelistat",
+  "query": "Is there a opportunistic infections risk with xelistat?",
+  "relevant": [
+   "ENT-QVAX-301:risk10k",
+   "ENT-QVAX-301:riskabs"
+  ]
+ },
+ {
+  "id": "q29-generic",
+  "ticker": "QVAX",
+  "drug": "VAX-301",
+  "query": "What are the specific safety and regulatory problems reported for VAX-301 in clinical trials?",
+  "relevant": [
+   "ENT-QVAX-301:risk10k",
+   "ENT-QVAX-301:riskabs"
+  ]
+ },
+ {
+  "id": "q-renamed",
+  "ticker": "QONC",
+  "drug": "ONC-101",
+  "query": "What liver safety findings were reported for ONC-101 under its earlier development code?",
+  "relevant": [
+   "RENAMED:old10k"
+  ]
+ }
+]

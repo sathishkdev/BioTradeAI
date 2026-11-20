@@ -21,7 +21,7 @@ dependencies = [
 anthropic = ["anthropic>=0.40"]
 # Later phases (installed when we reach them):
 graph = ["langgraph>=0.2", "langgraph-checkpoint-sqlite>=2.0"]
-rag = ["chromadb>=0.5"]
+rag = ["chromadb>=1.0", "sentence-transformers>=3.0", "pypdf>=4.0"]
 brokers = ["alpaca-py>=0.30", "mcp>=1.2"]
 dev = [
     "pytest>=8.0",

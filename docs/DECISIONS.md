@@ -126,3 +126,54 @@ live mode. Execution currently rejects live mode outright; the live gate lands i
 `tests/unit/test_architecture.py` parses `src/` with `ast` and fails if `place_order` is
 called anywhere except `brokers/execution.py`, or if `agents/` or `graph/` import
 `biotradeai.brokers`.
+
+## D-024 — Robinhood work moved to the final stage (2026-11-19)
+At the user's request, Phase 3 (Robinhood spike), Phase 9 (shadow) and anything else that
+needs the user's own accounts move to the very end. The order is now
+0 → 1 → 2 → 4 → 5 → 6 → 7 → 8 (Alpaca paper) → 3/9/10 (Robinhood).
+
+## D-025 — Phase 4 recall target: recall@5 >= 0.90, zero bleed (2026-11-19)
+Agreed with the user before coding. Measured on `data/fixtures/rag` (30 synthetic drugs,
+61 queries, 391 docs incl. risk-sounding boilerplate distractors and cross-ticker bait).
+Enforced by `tests/eval/test_recall.py`, which runs whenever the model is cached.
+
+## D-026 — Default embedder: BAAI/bge-small-en-v1.5 (2026-11-19)
+The user first picked all-MiniLM-L6-v2. It scored recall@5 = 0.885 (0.893 hybrid), with
+every miss on vague queries. bge-small-en-v1.5 scored 1.000 with or without hybrid.
+The user approved switching the default; MiniLM stays available via `BIOTRADEAI_EMBEDDER`.
+BGE query instructions are applied to queries only (`embed_queries`).
+
+## D-027 — Hybrid retrieval (BM25 + cosine, Reciprocal Rank Fusion) on by default (2026-11-19)
+`rag.hybrid: true`. It runs only inside the already-filtered ticker+entity pool, so it
+can't widen what is retrievable. Search within the pool is exact (no ANN approximation)
+up to `rag.max_pool` chunks. The similarity reported for confidence is always cosine.
+
+## D-028 — Claims are regex-extracted and hedge-filtered (2026-11-19)
+Conflict detection compares four claim types (clinical_hold, primary_endpoint,
+pdufa_date, crl) pulled from factual sentences only. Hypothetical risk-factor language
+("may", "could", "if", "no assurance", ...) is ignored, so a 10-K saying "we could
+receive a CRL" is not a CRL claim. An LLM extractor may be added later behind the same
+interface.
+
+## D-029 — Tier conflict rule (2026-11-19)
+Per claim key, each tier's most recent claim is taken. The most authoritative tier wins,
+EXCEPT when a Tier-2 claim is at least as recent as the Tier-1 winner and disagrees with
+it: that is "unresolved" and makes the bundle INCONCLUSIVE. An older Tier-2 claim is
+superseded by a newer Tier-1 record, so stale 10-K text can't block a ticker forever.
+Within one tier, the most recent claim wins.
+
+## D-030 — Confidence = authority x density (2026-11-19)
+authority = similarity-weighted mean of `rag.tier_weights` (1.0 / 0.85 / 0.6) over
+chunks with cosine >= `rag.min_similarity`; density = min(1, relevant /
+`rag.min_supporting_chunks`). Consequences: one chunk alone is never enough (0.5x), and
+press/PubMed-only evidence (0.6) is always below `min_confidence` 0.70, so it escalates.
+
+## D-031 — Strict entity filter; company-level text has its own entity (2026-11-19)
+Retrieval filters on exact ticker AND entity_id, as the plan says. Chunks that name no
+known drug get `ENT-<TICKER>-COMPANY` and are retrievable only by asking for that entity
+explicitly. Chunks that name several drugs are stored once per drug.
+
+## D-032 — New dependencies for RAG (2026-11-19)
+`rag` extra: chromadb (vector store), sentence-transformers (local embeddings), pypdf
+(FDA briefing PDFs). Ollama embeddings use plain httpx. PubMed XML is parsed with the
+stdlib ElementTree from the trusted NCBI host; modern expat refuses entity-expansion bombs.

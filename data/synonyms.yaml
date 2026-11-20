@@ -1,0 +1,13 @@
+# Human-maintained drug synonym dictionary. One Entity_ID per drug program.
+# names: current pipeline code, generic (INN) and brand names.
+# previous_codes: older pipeline codes after a rename (so old risk factors still match).
+# LLM suggestions land in data/synonym_proposals.yaml; approve with:
+#   python -m biotradeai ontology approve <index>
+#
+# Example:
+# entities:
+#   ENT-ONCO-101:
+#     ticker: ONCO
+#     names: [ONC-101, oncotinib, Oncora]
+#     previous_codes: [XYZ-77]
+entities: {}

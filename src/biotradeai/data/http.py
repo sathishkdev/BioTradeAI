@@ -100,6 +100,12 @@ class HttpFetcher:
         return resp
 
     def get_json(self, url: str, params: dict[str, Any] | None = None) -> Any:
+        return self._get(url, params).json()
+
+    def get_text(self, url: str, params: dict[str, Any] | None = None) -> str:
+        return self._get(url, params).text
+
+    def _get(self, url: str, params: dict[str, Any] | None) -> httpx.Response:
         retrying = Retrying(
             stop=stop_after_attempt(self._max_attempts),
             wait=wait_exponential(multiplier=self._backoff_s, max=30),
@@ -119,7 +125,7 @@ class HttpFetcher:
             raise FetchError(f"GET {url}: not found", 404)
         if resp.status_code >= 400:
             raise FetchError(f"GET {url}: HTTP {resp.status_code}", resp.status_code)
-        return resp.json()
+        return resp
 
     def close(self) -> None:
         self._http.close()

@@ -207,6 +207,10 @@ class EdgarClient:
         data = self._data.get_json(f"/api/xbrl/companyfacts/CIK{cik10(cik)}.json")
         return parse_company_facts(data, datetime.now(UTC))
 
+    def fetch_document(self, cik: int | str, filing: Filing) -> str:
+        """Raw primary document (usually HTML) of a filing from www.sec.gov/Archives."""
+        return self._www.get_text(filing.url(cik).removeprefix("https://www.sec.gov"))
+
     @property
     def request_count(self) -> int:
         return self._data.request_count + self._www.request_count

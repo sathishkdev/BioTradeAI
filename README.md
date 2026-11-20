@@ -17,15 +17,17 @@ See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the full design and
 | 0 | Bootstrap: config, schemas, SQLite audit store, LLM switcher | done |
 | 1 | Data layer (CT.gov, EDGAR, runway, catalysts.csv) | done |
 | 2 | Guardrail rules, approval tokens, brokers, kill-switch, execution | done |
-| 3 | Robinhood MCP spike (read-only) | next |
-| 4–10 | RAG, agents, sell FSM, backtest, paper, shadow, live | planned |
+| 4 | RAG: ontology, ingest, hybrid retrieval, tier/conflict resolution | done |
+| 5 | Agents + Tree of Thoughts + LangGraph supervisor | next |
+| 6–8 | Sell state machine, backtest, Alpaca paper trading | planned |
+| 3, 9, 10 | Robinhood spike, shadow mode, live pilot (needs your accounts) | last |
 
 ## Setup (Windows PowerShell)
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
+pip install -e ".[dev,rag]"
 copy .env.example .env      # then edit .env
 ```
 
@@ -46,6 +48,10 @@ python -m biotradeai account                      # Alpaca paper (needs keys)
 python -m biotradeai positions
 python -m biotradeai order ONCO --qty 100 --limit 10.00 --broker fake   # dry run
 python -m biotradeai killswitch status            # trip | reset
+python -m biotradeai rag eval                     # recall/bleed on 30-drug test set
+python -m biotradeai rag ingest doc.pdf --ticker ONCO --tier 1 --date 2026-01-05 --url https://... --drug ONC-101
+python -m biotradeai rag query ONCO ONC-101 "hepatic safety signals?"
+python -m biotradeai ontology resolve oncotinib   # list | proposals | propose | approve
 ```
 
 Quality gates (run before every commit):

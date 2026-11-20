@@ -46,6 +46,29 @@ class RunwayConfig(_Strict):
     burn_lookback_quarters: int = Field(ge=1, le=8)
 
 
+class RagConfig(_Strict):
+    chunk_tokens: int = Field(ge=300, le=500)
+    chunk_overlap_tokens: int = Field(ge=0, le=100)
+    top_k: int = Field(ge=3, le=5)
+    hybrid: bool
+    max_pool: int = Field(ge=10, le=100_000)
+    min_similarity: float = Field(ge=-1.0, le=1.0)
+    min_supporting_chunks: int = Field(ge=1, le=5)
+    recall_target: float = Field(gt=0.0, le=1.0)
+    tier_weights: dict[int, float]
+
+    @model_validator(mode="after")
+    def _checks(self) -> Self:
+        if self.chunk_overlap_tokens >= self.chunk_tokens:
+            raise ValueError("rag.chunk_overlap_tokens must be < chunk_tokens")
+        w = self.tier_weights
+        if set(w) != {1, 2, 3}:
+            raise ValueError("rag.tier_weights needs exactly tiers 1, 2, 3")
+        if not (1.0 >= w[1] >= w[2] >= w[3] > 0.0):
+            raise ValueError("rag.tier_weights must satisfy 1 >= t1 >= t2 >= t3 > 0")
+        return self
+
+
 class ToTConfig(_Strict):
     depth: int = Field(ge=1, le=5)
     beam_width: int = Field(ge=1, le=5)
@@ -82,6 +105,7 @@ class GuardrailsConfig(_Strict):
     daily_drawdown_limit: float = Field(gt=0.0, lt=1.0)
     max_api_errors: int = Field(ge=1)
     runway: RunwayConfig
+    rag: RagConfig
     orders: OrdersConfig
     tot: ToTConfig
     sell: SellConfig

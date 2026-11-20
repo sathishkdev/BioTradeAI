@@ -12,6 +12,16 @@ daily_drawdown_limit: 0.03   # vs start-of-day account equity
 max_api_errors: 3            # consecutive
 runway:
   burn_lookback_quarters: 4    # burn = max(latest quarter, mean of last N quarters)
+rag:
+  chunk_tokens: 400            # target chunk size (plan: 300-500)
+  chunk_overlap_tokens: 50
+  top_k: 5                     # plan: 3-5
+  hybrid: true                 # fuse BM25 keyword ranking with vector ranking (RRF)
+  max_pool: 2000               # exact search over the filtered pool up to this size
+  min_similarity: 0.20         # cosine; below this a chunk is not evidence
+  min_supporting_chunks: 2     # fewer relevant chunks -> lower confidence
+  recall_target: 0.90          # agreed acceptance target (recall@top_k)
+  tier_weights: {1: 1.0, 2: 0.85, 3: 0.6}   # source authority
 orders:
   allowed_types: [limit]
   allow_extended_hours: false   # revisit after Robinhood spike (Phase 3)
