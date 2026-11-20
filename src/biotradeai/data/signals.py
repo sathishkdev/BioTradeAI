@@ -148,10 +148,19 @@ def drug_mentions(text: str) -> list[str]:
             out.append(code)
     for m in _INN.finditer(text):
         name = m.group(1).lower()
-        if name not in out and name not in {"database", "release", "increase", "decrease",
-                                            "purchase", "phase", "case", "base", "ease"}:
+        if name not in out and name not in _NOT_INN and len(name) >= 6:
             out.append(name)
     return out
+
+
+# Ordinary words that happen to end like drug names (-ase, -cept, -cel, -stat, -gene ...).
+_NOT_INN = frozenset({
+    "accept", "base", "bases", "cancel", "case", "cases", "cease", "chase", "concept",
+    "concepts", "database", "decrease", "decreases", "disease", "diseases", "ease", "erase",
+    "excel", "except", "increase", "increases", "intercept", "lease", "lowercase", "parcel",
+    "phase", "phases", "please", "precept", "purchase", "purchases", "release", "releases",
+    "showcase", "thermostat", "upcase"
+})
 
 
 def sentences(text: str) -> list[str]:
@@ -177,11 +186,23 @@ class CatalystMention:
     sentence: str
 
 
+# Safe-harbor / risk-factor boilerplate lists many programs and dates in one sentence;
+# it states no fact about a specific catalyst, so it is never a source.
+_BOILERPLATE = re.compile(
+    r"forward-looking|risks? and uncertaint|including,? but not limited to|"
+    r"include,? but (?:are )?not limited to|no assurance|cannot assure|could cause|"
+    r"may disagree|safe harbor|actual results", re.I)
+
+
 def find_catalysts(text: str) -> list[CatalystMention]:
     out: list[CatalystMention] = []
+    seen: set[tuple[str, object, object, tuple[str, ...]]] = set()
     prev = ""
     for s in sentences(text):
         when = parse_when(s)
+        if when is not None and _BOILERPLATE.search(s):
+            prev = s
+            continue
         if when is not None:
             kind = None
             if _PDUFA.search(s):
@@ -192,8 +213,11 @@ def find_catalysts(text: str) -> list[CatalystMention]:
                 kind = "PHASE3_READOUT" if _PH3.search(s) else (
                     "PHASE2_READOUT" if _PH2.search(s) else None)
             if kind:
-                drugs = drug_mentions(s) or drug_mentions(prev)
-                out.append(CatalystMention(kind, when, tuple(drugs), s))
+                drugs = tuple(drug_mentions(s) or drug_mentions(prev))
+                key = (kind, when.start, when.end, drugs)
+                if key not in seen:  # press releases repeat the same date in headline/body
+                    seen.add(key)
+                    out.append(CatalystMention(kind, when, drugs, s))
         prev = s
     return out
 

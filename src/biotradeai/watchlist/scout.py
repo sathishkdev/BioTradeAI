@@ -69,6 +69,11 @@ _ATM = re.compile(r"at[- ]the[- ]market", re.I)
 
 
 _DOSE = re.compile(r"\s*\b\d+(\.\d+)?\s*(mg|mcg|ug|g|ml|mg/kg|iu|%)\b.*$", re.I)
+# Doses like '3E10 vg/eye' and formulation words like 'Injection'.
+_DOSE_TOKEN = re.compile(r"\b\d+(\.\d+)?E\d+\b|\bvg(/\w+)?\b|/(eye|kg|day)\b", re.I)
+_FORMULATION = re.compile(r"\s+(injection|injectable|tablets?|capsules?|oral solution|"
+                          r"oral suspension|sublingual film|film|infusion|ophthalmic "
+                          r"solution|for injection|IVT|IV|SC|subcutaneous)\s*$", re.I)
 
 
 def clean_names(raw: list[str]) -> list[str]:
@@ -77,8 +82,12 @@ def clean_names(raw: list[str]) -> list[str]:
     out: list[str] = []
     for r in raw:
         for part in re.split(r"[()\[\];,]", r):
-            name = _DOSE.sub("", part).strip(" -")
-            if (not name or len(re.findall(r"[A-Za-z]", name)) < 2
+            name = _FORMULATION.sub("", _DOSE.sub("", part)).strip(" -")
+            if _DOSE_TOKEN.search(name):
+                continue
+            letters = len(re.findall(r"[A-Za-z]", name))
+            code_like = letters >= 1 and len(name) >= 5 and bool(re.search(r"\d", name))
+            if (not name or (letters < 2 and not code_like)  # '515' out, '4D-150' in
                     or (len(name) <= 3 and not re.search(r"\d", name))):
                 continue
             if drug_key(name) not in {drug_key(x) for x in out}:
@@ -192,6 +201,9 @@ class Scout:
                 if not m.drugs or not self._in_window(m):
                     continue
                 c = self._cand(co, list(m.drugs[:3]))
+                if any(x["event"] == m.event_type and x["start"] == m.when.start.isoformat()
+                       and x["end"] == m.when.end.isoformat() for x in c.sec):
+                    continue  # same catalyst already on the card (another sentence/filing)
                 c.sec.append({"event": m.event_type, "start": m.when.start.isoformat(),
                               "end": m.when.end.isoformat(), "precision": m.when.precision.value,
                               "when": m.when.text, "sentence": m.sentence[:500],
@@ -362,9 +374,14 @@ class Scout:
                 spread = rules.spread_pct(q.bid, q.ask)
                 c.market = {"bid": str(q.bid), "ask": str(q.ask),
                             "spread_pct": None if spread is None else round(spread, 4)}
+                # Information only: scout quotes are often off-hours or single-venue (IEX),
+                # so a wide spread here proves little. The Risk Agent enforces the spread
+                # limit on a fresh quote at trade time.
                 if spread is None or not rules.check_spread(bid=q.bid, ask=q.ask,
                                                             cfg=self.cfg).ok:
-                    c.filtered = c.filtered or f"spread {spread} above limit or no quote"
+                    shown = "no quote" if spread is None else f"{spread:.2%}"
+                    c.flags.append(f"wide spread on scout quote ({shown}); re-checked at "
+                                   "trade time")
                 shares = _shares_outstanding(self.edgar, c.cik)
                 if shares:
                     cap = shares * (q.bid + q.ask) / 2

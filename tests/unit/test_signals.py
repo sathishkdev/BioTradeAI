@@ -100,3 +100,15 @@ def test_find_material_changes() -> None:
 def test_date_change_sentences_pick_the_new_date(text: str) -> None:
     w = parse_when(text)
     assert w is not None and w.exact == date(2027, 6, 15)
+
+
+def test_live_run_regressions_drug_names_and_boilerplate() -> None:
+    # ordinary words ending like drug names are not drugs
+    assert drug_mentions("patients with kidney disease; the concept was tested") == []
+    # safe-harbor boilerplate is never a catalyst source; repeated dates collapse
+    text = ("These forward-looking statements include statements regarding the PDUFA date of "
+            "March 16, 2027 for Anaphylm and AQST-108. The NDA for AD109 was assigned a PDUFA "
+            "goal date of February 28, 2027. The FDA has assigned a PDUFA goal date of "
+            "February 28, 2027.")
+    got = [(m.event_type, m.when.start, m.drugs) for m in find_catalysts(text)]
+    assert got == [("PDUFA", date(2027, 2, 28), ("AD109",))]

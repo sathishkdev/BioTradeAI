@@ -602,3 +602,10 @@ def test_rejected_pair_can_be_approved_by_human(tmp_path: Path) -> None:
     wl.add_proposal(_entry())
     wl.reject("ONCO:ONC-101", by="me", reason="oops")
     assert wl.approve("ONCO:ONC-101", by="me").status is Status.APPROVED
+
+
+def test_clean_names_drops_doses_and_formulations() -> None:
+    from biotradeai.watchlist.scout import clean_names
+    assert clean_names(["4D-150 IVT", "3E10 vg/eye"]) == ["4D-150"]
+    assert clean_names(["zodasiran Injection"]) == ["zodasiran"]
+    assert clean_names(["PCV21 vaccine", "515"]) == ["PCV21 vaccine"]
