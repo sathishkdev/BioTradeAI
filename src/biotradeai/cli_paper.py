@@ -26,8 +26,11 @@ from biotradeai.brokers.fake_broker import FakeBroker
 from biotradeai.cli_trading import _ask
 from biotradeai.config import load_config
 from biotradeai.data.catalysts import load_catalysts
+from biotradeai.data.clinicaltrials import ClinicalTrialsClient
 from biotradeai.data.edgar import EdgarClient
 from biotradeai.data.outcomes import load_outcomes
+from biotradeai.data.pollers import TrialDatePoller
+from biotradeai.events import CompletionDateChange
 from biotradeai.graph.buy_graph import sqlite_checkpointer
 from biotradeai.paper.gather import EdgarFilings, LiveGatherer, edgar_runway
 from biotradeai.paper.review import daily_review, paper_gate, render_review
@@ -39,7 +42,7 @@ from biotradeai.rag.retrieve import Retriever
 from biotradeai.schemas import StagedOrder
 from biotradeai.store.sqlite_store import SQLiteStore
 from biotradeai.watchlist.catalysts import agent_catalysts, agent_outcomes
-from biotradeai.watchlist.model import Watchlist
+from biotradeai.watchlist.model import Status, Watchlist
 
 
 def interactive_approver(auto_reject: bool) -> Approver:
@@ -60,6 +63,21 @@ def interactive_approver(auto_reject: bool) -> Approver:
     return approve
 
 
+class WatchlistTrials:
+    """Time-stop source: the trials of watchlist drugs held as positions."""
+
+    def __init__(self, wl: Watchlist, poller: TrialDatePoller) -> None:
+        self._wl, self._poller = wl, poller
+
+    def poll(self, ticker: str) -> list[CompletionDateChange]:
+        out: list[CompletionDateChange] = []
+        for e in self._wl.with_status(Status.APPROVED, Status.PAUSED):
+            if e.ticker == ticker:
+                for nct in e.trial_ids:
+                    out += self._poller.poll(ticker, nct)
+        return out
+
+
 def cmd_paper_run(args: argparse.Namespace) -> int:
     cfg = load_config()
     store = SQLiteStore()
@@ -77,7 +95,8 @@ def cmd_paper_run(args: argparse.Namespace) -> int:
             generator=make_llm_client("research", args.llm),
             critic=make_llm_client("critic", args.critic_llm or args.llm),
             authority=authority, approver=interactive_approver(args.auto_reject),
-            checkpointer=saver, filings=EdgarFilings(edgar, store))
+            checkpointer=saver, filings=EdgarFilings(edgar, store),
+            trials=WatchlistTrials(Watchlist(), TrialDatePoller(ClinicalTrialsClient(), store)))
         # Human-curated rows + agent-managed events for APPROVED watchlist drugs.
         wl, today = Watchlist(), datetime.now(UTC).date()
         rep = runner.cycle(load_catalysts() + agent_catalysts(store, wl, today),

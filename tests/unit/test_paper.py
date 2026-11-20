@@ -27,7 +27,7 @@ from biotradeai.data.catalysts import Catalyst
 from biotradeai.data.edgar import parse_company_facts
 from biotradeai.data.outcomes import Outcome
 from biotradeai.data.runway import compute_runway
-from biotradeai.events import FilingEvent, ReadoutResult
+from biotradeai.events import CompletionDateChange, FilingEvent, ReadoutResult
 from biotradeai.graph.sell_graph import SellPosition, SellState
 from biotradeai.paper.gather import GatherError, LiveGatherer
 from biotradeai.paper.review import daily_review, paper_gate
@@ -398,3 +398,24 @@ def test_gatherer_rejects_unsupported_event_and_dead_quote(cfg: GuardrailsConfig
                  run_id="r")
     with pytest.raises(GatherError, match="runway"):
         g.gather(ONCO_CAT, now=now, run_id="r")
+
+
+class StubTrials:
+    def __init__(self, events: list[CompletionDateChange]) -> None:
+        self.events = events
+
+    def poll(self, ticker: str) -> list[CompletionDateChange]:
+        return [e for e in self.events if e.ticker == ticker]
+
+
+def test_slipped_trial_triggers_time_stop_exit(cfg: GuardrailsConfig, rates: BaseRates,
+                                               store: SQLiteStore, fx: ScenarioFixture) -> None:
+    broker = _holding(store)
+    now = datetime(2026, 12, 1, 15, tzinfo=UTC)
+    slip = CompletionDateChange(ticker="ONCO", ts=now, nct_id="NCT09000001",
+                                old_date=date(2026, 12, 1), new_date=date(2027, 7, 1))
+    r = _runner(cfg, rates, store, fx, broker, Approver(True), now=now)
+    r._trials = StubTrials([slip])
+    rep = r.cycle([ONCO_CAT], [])
+    assert [(e["trigger"], e["status"]) for e in rep.exits] == [("time_stop", "placed")]
+    assert _sells(broker)[0].qty == 100

@@ -10,7 +10,7 @@ import copy
 import json
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import chromadb
 import httpx
@@ -239,11 +239,14 @@ class Mock:
                                  "ONCO.json").read_text(encoding="utf-8"))
         self.paths: list[str] = []
 
+    COMPANIES: ClassVar[dict[str, tuple[str, str, str]]] = {
+        CIK: ("Onco Example Therapeutics, Inc.", "2836", "ONCO"),
+        "0009000002": ("Viri Example Bio, Inc.", "2836", "VRDX")}
+
     def submissions(self, cik: str) -> dict[str, Any]:
-        bio = cik == CIK
-        return {"cik": cik, "name": "Onco Example Therapeutics, Inc." if bio else "Car Co",
-                "sic": "2836" if bio else "3711", "sicDescription": "",
-                "tickers": ["ONCO"] if bio else ["CARX"], "exchanges": ["Nasdaq"],
+        name, sic, ticker = self.COMPANIES.get(cik, ("Car Co", "3711", "CARX"))
+        return {"cik": cik, "name": name, "sic": sic, "sicDescription": "",
+                "tickers": [ticker], "exchanges": ["Nasdaq"],
                 "filings": {"recent": {k: [] for k in ("accessionNumber", "form", "filingDate",
                                                         "reportDate", "primaryDocument")}}}
 
@@ -267,7 +270,9 @@ class Mock:
         if p == "/files/company_tickers_exchange.json":
             return httpx.Response(200, json={"fields": ["cik", "name", "ticker", "exchange"],
                                              "data": [[9000001, "Onco Example Therapeutics, "
-                                                       "Inc.", "ONCO", "Nasdaq"]]})
+                                                       "Inc.", "ONCO", "Nasdaq"],
+                                                      [9000002, "Viri Example Bio, Inc.",
+                                                       "VRDX", "Nasdaq"]]})
         return httpx.Response(404)
 
 
@@ -494,3 +499,31 @@ def test_numbers_are_not_drug_names_and_missing_runway_is_filtered(
     mock.facts = {"cik": 9000001, "entityName": "Foreign Co", "facts": {}}
     rep = _scout(mock, store, Watchlist(tmp_path / "wl.yaml"), cfg).run()
     assert rep.proposed == [] and rep.filtered.get("runway-unavailable")
+
+
+def test_licensed_drug_flags_licensee_and_proposes_originator(
+        tmp_path: Path, store: SQLiteStore, cfg: GuardrailsConfig) -> None:
+    mock = Mock()  # Onco sponsors the trial of "ON-1109 (VRDX-003)": VRDX is another ticker
+    mock.study["protocolSection"]["armsInterventionsModule"]["interventions"] = [
+        {"type": "DRUG", "name": "ON-1109 (VRDX-003)"}, {"type": "DRUG", "name": "Placebo"}]
+    wl = Watchlist(tmp_path / "wl.yaml")
+    rep = _scout(mock, store, wl, cfg).run()
+    assert set(rep.proposed) == {"ONCO:ON-1109", "VRDX:VRDX-003"}
+    lic = wl.get("ONCO:ON-1109").card["licensing"]
+    assert lic["role"] == "likely licensee" and lic["ticker"] == "VRDX"
+    assert any("likely a licensee" in f for f in wl.get("ONCO:ON-1109").card["red_flags"])
+    orig = wl.get("VRDX:VRDX-003")
+    assert orig.card["licensing"]["role"] == "likely originator"
+    assert orig.drug_names[0] == "VRDX-003" and "originator by drug code" in orig.card["match"]
+    assert orig.card["drug"]["trials"][0]["nct"] == "NCT09000001"
+
+
+def test_own_ticker_code_is_not_licensing(tmp_path: Path, store: SQLiteStore,
+                                          cfg: GuardrailsConfig) -> None:
+    mock = Mock()
+    mock.study["protocolSection"]["armsInterventionsModule"]["interventions"] = [
+        {"type": "DRUG", "name": "oncotinib (ONCO-101)"}]
+    wl = Watchlist(tmp_path / "wl.yaml")
+    rep = _scout(mock, store, wl, cfg).run()
+    assert rep.proposed == ["ONCO:ONCO-101"]  # own code preferred as the ID
+    assert wl.get("ONCO:ONCO-101").card["licensing"] is None

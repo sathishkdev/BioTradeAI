@@ -51,6 +51,8 @@ CT_WINDOW = (60, 365)  # days ahead for Phase 3 primary completion
 INITIAL_LOOKBACK_DAYS = 7
 MAX_LOOKBACK_DAYS = 14
 LARGE_SPONSOR_TRIALS = 10  # many Phase 3s = diversified; one readout rarely moves it
+# Drug code with a letter prefix of 3+ letters, e.g. VRDN-003 / ABC123 (prefix = group 1).
+LICENSE_CODE = re.compile(r"^([A-Z]{3,6})-?\d{2,6}[A-Z]?$")
 MAX_MARKET_CAP = Decimal(10) ** 10  # $10B: above this one catalyst rarely moves the stock
 _NON_DRUG = re.compile(r"placebo|standard of care|best supportive|vehicle|saline|"
                        r"observation|usual care", re.I)
@@ -96,6 +98,8 @@ class Candidate:
     filtered: str | None = None
     runway: dict[str, Any] | None = None
     market: dict[str, Any] | None = None
+    licensing: dict[str, Any] | None = None
+    preferred_name: str | None = None
     score: float = 0.0
 
     @property
@@ -128,6 +132,7 @@ class Scout:
         self.window_s = spread_minutes * 60
         self.max_proposals, self.soft_cap, self._sleep = max_proposals, soft_cap, sleep
         self._cands: dict[tuple[str, str], Candidate] = {}
+        self._rows: list[tuple[str, str, str, str]] | None = None
 
     # ------------------------------------------------------------------ helpers
 
@@ -231,10 +236,8 @@ class Scout:
             return
         if not by_sponsor:
             return
-        try:
-            rows = self.edgar.ticker_exchange_rows()
-        except FetchError as exc:
-            rep.errors.append(f"ticker list: {exc}"[:200])
+        rows = self._ticker_rows(rep)
+        if not rows:
             return
         names: dict[str, str] = {}
         for row_cik, name, _ticker, _exch in rows:
@@ -262,6 +265,55 @@ class Scout:
                 c.trials.append(t)
                 c.sponsor_trials = len(trials)
                 c.match = f"CT.gov sponsor '{sponsor}' -> {co.name} ({how})"
+
+    def _ticker_rows(self, rep: ScoutReport) -> list[tuple[str, str, str, str]]:
+        if self._rows is None:
+            try:
+                self._rows = self.edgar.ticker_exchange_rows()
+            except FetchError as exc:
+                rep.errors.append(f"ticker list: {exc}"[:200])
+                self._rows = []
+        return self._rows
+
+    # ------------------------------------------------------------------ licensing
+
+    def link_licensing(self, rep: ScoutReport) -> None:
+        """A drug code whose letter prefix is ANOTHER listed company's ticker (e.g.
+        'VRDN-003' on Zai Lab's trial) usually means the drug was licensed. Flag the
+        licensee and also propose the originator, which the catalyst may move more."""
+        by_ticker = {tk.upper(): cik for cik, _n, tk, _x in self._ticker_rows(rep)}
+        for c in list(self._cands.values()):
+            for name in c.names:
+                m = LICENSE_CODE.match(name)
+                if not m:
+                    continue
+                tk = m.group(1).upper()
+                own = {x.upper() for x in c.company.tickers}
+                if tk in own:
+                    c.preferred_name = name  # the company's own code: ownership signal
+                    continue
+                orig_cik = by_ticker.get(tk)
+                if orig_cik is None or orig_cik == c.cik:
+                    continue
+                try:
+                    orig = self.dir.company(orig_cik)
+                except FetchError as exc:
+                    rep.errors.append(f"{orig_cik}: {exc}"[:200])
+                    continue
+                c.licensing = {"code": name, "ticker": tk, "company": orig.name,
+                               "role": "likely licensee"}
+                c.flags.append(f"drug code {name} matches {tk} ({orig.name}): this company "
+                               f"is likely a licensee; the catalyst may move {tk} more")
+                if not (orig.is_biotech and orig.is_listed):
+                    continue
+                o = self._cand(orig, list(c.names))
+                o.preferred_name = name
+                o.trials = o.trials or list(c.trials)
+                o.sec = o.sec or list(c.sec)
+                o.licensing = {"code": name, "ticker": c.company.ticker,
+                               "company": c.company.name, "role": "likely originator"}
+                o.match = (f"originator by drug code {name} (ticker {tk}); trials sponsored "
+                           f"by {c.company.name}")
 
     # ------------------------------------------------------------------ enrich + rank
 
@@ -338,6 +390,7 @@ class Scout:
         rep = ScoutReport(datetime.now(UTC))
         self.scan_sec(rep)
         self.scan_ctgov(rep)
+        self.link_licensing(rep)
         rep.candidates = len(self._cands)
         if self.wl.active_count() >= self.soft_cap:
             rep.cap_reached = True
@@ -390,7 +443,8 @@ class Scout:
 
     def _entry(self, c: Candidate) -> WatchEntry:
         ticker = c.company.ticker or c.cik
-        primary = next((n for n in c.names if re.search(r"\d", n)), c.names[0])
+        primary = c.preferred_name or next((n for n in c.names if re.search(r"\d", n)),
+                                           c.names[0])
         names = [primary, *[n for n in c.names if n != primary]]
         sources = (["SEC 8-K"] if c.sec else []) + (["ClinicalTrials.gov"] if c.trials else [])
         card = {
@@ -406,6 +460,7 @@ class Scout:
             "concentration": {"phase3_trials_completing_in_3_to_12_months":
                               c.sponsor_trials},
             "red_flags": c.flags,
+            "licensing": c.licensing,
             "fit": {"supported_event": any(x["event"] in SUPPORTED for x in c.sec)
                     or bool(c.trials),
                     "has_tradable_date": any(x["event"] in SUPPORTED and x["precision"] in

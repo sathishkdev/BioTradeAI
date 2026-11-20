@@ -32,6 +32,7 @@ from biotradeai.data.outcomes import Outcome
 from biotradeai.events import (
     CatalystOutcome,
     CatalystScheduled,
+    CompletionDateChange,
     FilingEvent,
     PriceTick,
     SellEvent,
@@ -54,6 +55,12 @@ class Gatherer(Protocol):
                run_id: str) -> tuple[CatalystState, ResearchInputs]: ...
 
 
+class TrialSource(Protocol):
+    """Completion-date changes for the trials behind a held ticker (time-stop)."""
+
+    def poll(self, ticker: str) -> list[CompletionDateChange]: ...
+
+
 class FilingSource(Protocol):
     def poll(self, ticker: str, *, since: date) -> list[FilingEvent]: ...
 
@@ -74,12 +81,14 @@ class PaperRunner:
                  gatherer: Gatherer, rates: BaseRates, generator: LLMClient,
                  critic: LLMClient, authority: ApprovalAuthority, approver: Approver,
                  checkpointer: Any, filings: FilingSource | None = None,
+                 trials: TrialSource | None = None,
                  clock: Callable[[], datetime] = lambda: datetime.now(UTC)) -> None:
         self.cfg, self.store, self.broker = cfg, store, broker
         self._gatherer, self._rates = gatherer, rates
         self._gen, self._crit = generator, critic
         self._authority, self._approver = authority, approver
         self._saver, self._filings, self._clock = checkpointer, filings, clock
+        self._trials = trials
         self._exec = ExecutionService(broker, store, cfg, authority)
         self.killswitch: KillSwitch = self._exec.killswitch
         self._last_exec: dict[str, Any] | None = None
@@ -295,6 +304,8 @@ class PaperRunner:
             if c.ticker == pos.ticker and c.date > pos.catalyst_date:
                 evs.append(CatalystScheduled(ticker=pos.ticker, ts=now, event=c.event,
                                              catalyst_date=c.date))
+        if self._trials is not None:
+            evs += self._trials.poll(pos.ticker)
         if self._filings is not None:
             evs += self._filings.poll(pos.ticker, since=now.date() - timedelta(days=7))
         return evs

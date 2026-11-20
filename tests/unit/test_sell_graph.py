@@ -190,3 +190,13 @@ def test_sell_limit_is_marketable(bid: Decimal) -> None:
 ])
 def test_classify_filing(form: str, text: str | None, dilutive: bool) -> None:
     assert classify_filing(form, text)[0] is dilutive
+
+
+def test_time_stop_uses_old_date_when_no_baseline(cfg: GuardrailsConfig) -> None:
+    """A held position without a recorded baseline compares against the date before the
+    change, so the first big slip still fires (it must not silently become the baseline)."""
+    ev = CompletionDateChange(ticker="ONCO", ts=T0, nct_id="NCT09990001",
+                              old_date=date(2026, 12, 1), new_date=date(2027, 8, 1))
+    _, out = step(_pos(last_bid=Decimal("9")), ev, cfg)
+    assert out and out[0].trigger is Trigger.TIME_STOP
+    assert "2026-12-01" in out[0].reason

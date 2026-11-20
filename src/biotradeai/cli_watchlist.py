@@ -90,6 +90,10 @@ def print_card(e: WatchEntry) -> None:
     _line("note", c.get("ctgov_note"))
     _line("Phase 3s due", (c.get("concentration") or {}).get(
         "phase3_trials_completing_in_3_to_12_months"))
+    lic = c.get("licensing") or {}
+    if lic:
+        _line("licensing", f"{lic.get('role')}: code {lic.get('code')} links to "
+                           f"{lic.get('company')} ({lic.get('ticker')})")
     for f in c.get("red_flags") or []:
         print(f"  RED FLAG         {f}")
     fit = c.get("fit") or {}

@@ -171,12 +171,15 @@ def step(pos: SellPosition, ev: SellEvent,
     if isinstance(ev, CompletionDateChange):
         if pos.nct_id is not None and ev.nct_id != pos.nct_id:
             return pos, []
-        if pos.baseline_completion is None:
+        # Baseline = completion date at entry; if unknown, the date before this change.
+        base = pos.baseline_completion or ev.old_date
+        if base is None:
             return pos.model_copy(update={"baseline_completion": ev.new_date}), []
-        delay = months_between(pos.baseline_completion, ev.new_date)
+        pos = pos.model_copy(update={"baseline_completion": base})
+        delay = months_between(base, ev.new_date)
         if delay > sc.completion_delay_months:
             return _close(pos, Trigger.TIME_STOP,
-                          f"primary completion moved {pos.baseline_completion} -> "
+                          f"primary completion moved {base} -> "
                           f"{ev.new_date} ({delay:.1f} mo > {sc.completion_delay_months} mo)",
                           ev.ts)
         return pos, []
