@@ -103,6 +103,52 @@ CREATE TABLE IF NOT EXISTS request_ledger (
     PRIMARY KEY (source, day)
 );
 
+CREATE TABLE IF NOT EXISTS sec_companies (
+    cik         TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    sic         TEXT,
+    tickers     TEXT NOT NULL,
+    exchanges   TEXT NOT NULL,
+    fetched_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS catalyst_events (
+    entity_id       TEXT NOT NULL,
+    event_type      TEXT NOT NULL,
+    trial_id        TEXT NOT NULL DEFAULT '',
+    cik             TEXT NOT NULL,
+    ticker          TEXT NOT NULL,
+    drug            TEXT NOT NULL,
+    date            TEXT,
+    window_start    TEXT,
+    window_end      TEXT,
+    precision       TEXT NOT NULL,
+    status          TEXT NOT NULL,
+    outcome         TEXT,
+    source_url      TEXT NOT NULL,
+    source_sentence TEXT NOT NULL,
+    source_filed    TEXT NOT NULL,
+    previous_dates  TEXT NOT NULL DEFAULT '[]',
+    updated_at      TEXT NOT NULL,
+    PRIMARY KEY (entity_id, event_type, trial_id)
+);
+
+CREATE TABLE IF NOT EXISTS ingested_docs (
+    doc_sha      TEXT NOT NULL,
+    entity_id    TEXT NOT NULL,
+    ticker       TEXT NOT NULL,
+    source       TEXT NOT NULL,
+    url          TEXT NOT NULL,
+    published_at TEXT NOT NULL,
+    ingested_at  TEXT NOT NULL,
+    PRIMARY KEY (doc_sha, entity_id)
+);
+
+CREATE TABLE IF NOT EXISTS kv (
+    key    TEXT PRIMARY KEY,
+    value  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS killswitch_counters (
     id                       INTEGER PRIMARY KEY CHECK (id = 1),
     consecutive_api_errors   INTEGER NOT NULL CHECK (consecutive_api_errors >= 0)
@@ -391,6 +437,97 @@ class SQLiteStore:
             if tripped is not None:
                 conn.execute("UPDATE request_ledger SET tripped = ? WHERE source = ? "
                              "AND day = ?", (int(tripped), source, day))
+
+    # ------------------------------------------------------------------ key/value
+
+    def kv_get(self, key: str) -> str | None:
+        with self._connect() as conn:
+            r = conn.execute("SELECT value FROM kv WHERE key = ?", (key,)).fetchone()
+        return None if r is None else str(r[0])
+
+    def kv_set(self, key: str, value: str) -> None:
+        with self._connect() as conn:
+            conn.execute("INSERT INTO kv(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE "
+                         "SET value = excluded.value", (key, value))
+
+    # ------------------------------------------------------------------ SEC company cache
+
+    def upsert_company(self, cik: str, name: str, sic: str | None, tickers: list[str],
+                       exchanges: list[str]) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO sec_companies(cik, name, sic, tickers, exchanges, fetched_at) "
+                "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(cik) DO UPDATE SET name = excluded.name, "
+                "sic = excluded.sic, tickers = excluded.tickers, "
+                "exchanges = excluded.exchanges, fetched_at = excluded.fetched_at",
+                (cik, name, sic, json.dumps(tickers), json.dumps(exchanges), _now()))
+
+    def get_company(self, cik: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            r = conn.execute("SELECT * FROM sec_companies WHERE cik = ?", (cik,)).fetchone()
+        if r is None:
+            return None
+        d = dict(r)
+        d["tickers"] = json.loads(d["tickers"])
+        d["exchanges"] = json.loads(d["exchanges"])
+        return d
+
+    # ------------------------------------------------------------------ ingested documents
+
+    def mark_ingested(self, doc_sha: str, entity_id: str, *, ticker: str, source: str,
+                      url: str, published_at: str) -> bool:
+        """True the first time (doc, entity) is recorded; False if already ingested."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO ingested_docs(doc_sha, entity_id, ticker, source, url, "
+                "published_at, ingested_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (doc_sha, entity_id, ticker, source, url, published_at, _now()))
+            return cur.rowcount == 1
+
+    def ingested_count(self, entity_id: str) -> dict[str, int]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT source, COUNT(*) FROM ingested_docs WHERE entity_id = ? "
+                                "GROUP BY source", (entity_id,)).fetchall()
+        return {str(s): int(n) for s, n in rows}
+
+    # ------------------------------------------------------------------ catalyst events
+
+    def get_event(self, entity_id: str, event_type: str,
+                  trial_id: str = "") -> dict[str, Any] | None:
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            r = conn.execute("SELECT * FROM catalyst_events WHERE entity_id = ? AND "
+                             "event_type = ? AND trial_id = ?",
+                             (entity_id, event_type, trial_id)).fetchone()
+        return None if r is None else dict(r)
+
+    def put_event(self, row: dict[str, Any]) -> None:
+        cols = ("entity_id", "event_type", "trial_id", "cik", "ticker", "drug", "date",
+                "window_start", "window_end", "precision", "status", "outcome", "source_url",
+                "source_sentence", "source_filed", "previous_dates")
+        vals = [row.get(c) for c in cols]
+        vals[2] = vals[2] or ""
+        vals[-1] = vals[-1] or "[]"
+        with self._connect() as conn:
+            conn.execute(
+                f"INSERT INTO catalyst_events({', '.join(cols)}, updated_at) "  # noqa: S608
+                f"VALUES ({', '.join('?' for _ in cols)}, ?) ON CONFLICT(entity_id, "
+                "event_type, trial_id) DO UPDATE SET "
+                + ", ".join(f"{c} = excluded.{c}" for c in cols[3:])
+                + ", updated_at = excluded.updated_at", (*vals, _now()))
+
+    def list_events(self, *, entity_id: str | None = None) -> list[dict[str, Any]]:
+        sql = "SELECT * FROM catalyst_events"
+        args: tuple[str, ...] = ()
+        if entity_id is not None:
+            sql += " WHERE entity_id = ?"
+            args = (entity_id,)
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(sql + " ORDER BY COALESCE(date, window_end), entity_id",
+                                args).fetchall()
+        return [dict(r) for r in rows]
 
     def get_nct(self, nct_id: str) -> dict[str, Any] | None:
         with self._connect() as conn:

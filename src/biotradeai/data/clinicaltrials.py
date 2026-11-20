@@ -147,18 +147,26 @@ class ClinicalTrialsClient:
         sponsor: str | None = None,
         intervention: str | None = None,
         term: str | None = None,
+        advanced: str | None = None,
+        statuses: tuple[str, ...] = (),
         page_size: int = 50,
         max_pages: int = 10,
     ) -> Iterator[TrialRecord]:
+        """``advanced`` is the API's ``filter.advanced`` Essie expression, e.g.
+        ``AREA[Phase]PHASE3 AND AREA[LeadSponsorClass]INDUSTRY`` (verified live)."""
         params: dict[str, Any] = {"format": "json", "pageSize": page_size}
+        if advanced:
+            params["filter.advanced"] = advanced
+        if statuses:
+            params["filter.overallStatus"] = "|".join(statuses)
         if sponsor:
             params["query.spons"] = sponsor
         if intervention:
             params["query.intr"] = intervention
         if term:
             params["query.term"] = term
-        if len(params) == 2:
-            raise ValueError("search needs at least one of sponsor/intervention/term")
+        if not ({"query.spons", "query.intr", "query.term", "filter.advanced"} & set(params)):
+            raise ValueError("search needs sponsor, intervention, term or advanced")
         for _ in range(max_pages):
             data = self._f.get_json("/studies", params=params)
             now = datetime.now(UTC)

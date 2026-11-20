@@ -18,6 +18,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from biotradeai.config import RagConfig
 from biotradeai.data.clinicaltrials import TrialRecord
@@ -81,6 +82,34 @@ def extract_item_1a(text: str) -> str | None:
     return best if best and len(best.split()) > 20 else None
 
 
+def trial_results_lines(raw: dict[str, Any]) -> list[str]:
+    """Primary endpoints and any POSTED results (outcome titles, time frames, p-values).
+
+    Field names verified against a live v2 record (protocolSection.outcomesModule,
+    resultsSection.outcomeMeasuresModule.outcomeMeasures[].{type,title,timeFrame,analyses}).
+    """
+    out: list[str] = []
+    ps = raw.get("protocolSection") or {}
+    for o in (ps.get("outcomesModule") or {}).get("primaryOutcomes") or []:
+        if o.get("measure"):
+            out.append(f"Primary endpoint: {o['measure']}"
+                       + (f" (time frame: {o['timeFrame']})." if o.get("timeFrame") else "."))
+    rs = raw.get("resultsSection") or {}
+    for m in (rs.get("outcomeMeasuresModule") or {}).get("outcomeMeasures") or []:
+        if str(m.get("type", "")).upper() != "PRIMARY":
+            continue
+        line = f"Posted primary outcome result: {m.get('title', '')}"
+        if m.get("timeFrame"):
+            line += f" (time frame: {m['timeFrame']})"
+        stats = [f"p={a['pValue']}" + (f" ({a['statisticalMethod']})"
+                                       if a.get("statisticalMethod") else "")
+                 for a in m.get("analyses") or [] if a.get("pValue")]
+        out.append(line + (f"; {', '.join(stats)}" if stats else "") + ".")
+    if raw.get("hasResults") and not rs:
+        out.append("Results are flagged as posted on ClinicalTrials.gov.")
+    return out
+
+
 def trial_to_document(rec: TrialRecord, ticker: str, entity_id: str) -> Document:
     lines = [
         f"ClinicalTrials.gov record {rec.nct_id}: {rec.title}.",
@@ -92,6 +121,7 @@ def trial_to_document(rec: TrialRecord, ticker: str, entity_id: str) -> Document
     if rec.primary_completion:
         lines.append(f"Primary completion date ({rec.primary_completion.kind.value.lower()}, "
                      f"sponsor-reported): {rec.primary_completion.raw}.")
+    lines += trial_results_lines(rec.raw)
     published = datetime.combine(rec.last_update_posted, datetime.min.time(),
                                  rec.fetched_at.tzinfo) if rec.last_update_posted \
         else rec.fetched_at

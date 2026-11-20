@@ -38,6 +38,8 @@ from biotradeai.rag.ontology import load_ontology
 from biotradeai.rag.retrieve import Retriever
 from biotradeai.schemas import StagedOrder
 from biotradeai.store.sqlite_store import SQLiteStore
+from biotradeai.watchlist.catalysts import agent_catalysts, agent_outcomes
+from biotradeai.watchlist.model import Watchlist
 
 
 def interactive_approver(auto_reject: bool) -> Approver:
@@ -76,7 +78,10 @@ def cmd_paper_run(args: argparse.Namespace) -> int:
             critic=make_llm_client("critic", args.critic_llm or args.llm),
             authority=authority, approver=interactive_approver(args.auto_reject),
             checkpointer=saver, filings=EdgarFilings(edgar, store))
-        rep = runner.cycle(load_catalysts(), load_outcomes())
+        # Human-curated rows + agent-managed events for APPROVED watchlist drugs.
+        wl, today = Watchlist(), datetime.now(UTC).date()
+        rep = runner.cycle(load_catalysts() + agent_catalysts(store, wl, today),
+                           load_outcomes() + agent_outcomes(store, wl))
     print(f"\ncycle {rep.started_at:%Y-%m-%d %H:%M} UTC on {broker.name}"
           + (f"   HALTED: {rep.halted}" if rep.halted else ""))
     if not rep.evaluated and not rep.skipped and not rep.orders and not rep.exits:

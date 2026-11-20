@@ -16,7 +16,7 @@ from typing import Any
 import httpx
 
 from biotradeai.data import netpolicy
-from biotradeai.data.http import HttpFetcher, RateLimiter
+from biotradeai.data.http import FetchError, HttpFetcher, RateLimiter
 
 DATA_URL = "https://data.sec.gov"
 TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
@@ -68,6 +68,9 @@ class Submissions:
     tickers: tuple[str, ...]
     filings: tuple[Filing, ...]
     fetched_at: datetime
+    sic: str | None = None
+    sic_description: str = ""
+    exchanges: tuple[str, ...] = ()
 
     def by_form(self, *forms: str) -> list[Filing]:
         wanted = {f.upper() for f in forms}
@@ -130,6 +133,9 @@ def parse_submissions(data: dict[str, Any], fetched_at: datetime) -> Submissions
         tickers=tuple(data.get("tickers") or ()),
         filings=filings,
         fetched_at=fetched_at,
+        sic=str(data["sic"]) if data.get("sic") else None,
+        sic_description=str(data.get("sicDescription") or ""),
+        exchanges=tuple(str(x) for x in (data.get("exchanges") or ()) if x),
     )
 
 
@@ -213,6 +219,31 @@ class EdgarClient:
     def fetch_document(self, cik: int | str, filing: Filing) -> str:
         """Raw primary document (usually HTML) of a filing from www.sec.gov/Archives."""
         return self._www.get_text(filing.url(cik).removeprefix("https://www.sec.gov"))
+
+    def daily_form_index(self, day: date) -> str | None:
+        """SEC daily form index (one file lists every filing that day). None on days
+        without an index (weekends, holidays) - SEC answers 404 / 403 for those."""
+        q = (day.month - 1) // 3 + 1
+        path = f"/Archives/edgar/daily-index/{day.year}/QTR{q}/form.{day:%Y%m%d}.idx"
+        try:
+            return self._www.get_text(path)
+        except FetchError as exc:
+            if exc.status_code in (403, 404):
+                return None
+            raise
+
+    def archive_text(self, path: str) -> str:
+        """A file under www.sec.gov/Archives, e.g. a full submission .txt with exhibits."""
+        rel = path if path.startswith("/") else f"/Archives/{path}"
+        return self._www.get_text(rel)
+
+    def ticker_exchange_rows(self) -> list[tuple[str, str, str, str]]:
+        """(cik10, company name, ticker, exchange) for every listed company (1 request)."""
+        raw = self._www.get_json("/files/company_tickers_exchange.json")
+        fields = list(raw["fields"])
+        i = {f: fields.index(f) for f in ("cik", "name", "ticker", "exchange")}
+        return [(cik10(r[i["cik"]]), str(r[i["name"]]), str(r[i["ticker"]]),
+                 str(r[i["exchange"]] or "")) for r in raw["data"]]
 
     @property
     def request_count(self) -> int:

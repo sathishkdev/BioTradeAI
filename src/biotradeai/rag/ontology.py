@@ -202,14 +202,37 @@ def approve_proposal(index: int, *, approver: str, proposals: Path | None = None
     else:
         cur = Entity(cur.entity_id, cur.ticker, cur.names, (*cur.previous_codes, prop["name"]))
     ents[cur.entity_id] = cur
-    Ontology(ents)  # raises if the new name collides with another entity
-    header = ""
-    if sp.exists():  # keep the human-written comment header
-        lines = sp.read_text(encoding="utf-8").splitlines(keepends=True)
-        header = "".join(ln for ln in lines[: next((i for i, ln in enumerate(lines)
-                                                   if not ln.startswith("#")), len(lines))])
-    sp.write_text(header + yaml.safe_dump(_dump(ents), sort_keys=False), encoding="utf-8")
+    _write_synonyms(ents, sp)
     items[index] = {**prop, "status": "approved", "approved_by": approver,
                     "approved_at": datetime.now(UTC).isoformat()}
     pp.write_text(yaml.safe_dump({"proposals": items}, sort_keys=False), encoding="utf-8")
     return cur
+
+
+def _write_synonyms(ents: dict[str, Entity], path: Path) -> None:
+    Ontology(ents)  # raises if any name collides with another entity
+    header = ""
+    if path.exists():  # keep the human-written comment header
+        lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+        header = "".join(ln for ln in lines[: next((i for i, ln in enumerate(lines)
+                                                   if not ln.startswith("#")), len(lines))])
+    path.write_text(header + yaml.safe_dump(_dump(ents), sort_keys=False), encoding="utf-8",
+                    newline="\n")
+
+
+def upsert_entity(entity: Entity, *, synonyms: Path | None = None) -> Entity:
+    """Add or extend one entity in synonyms.yaml. Called only from a HUMAN approval
+    (``watchlist approve``), never by an agent on its own. Names are merged, never
+    removed; a collision with another entity raises OntologyError and writes nothing."""
+    sp = synonyms or default_path()
+    ents = dict(load_ontology(sp).entities)
+    cur = ents.get(entity.entity_id)
+    if cur is not None and cur.ticker != entity.ticker:
+        raise OntologyError(f"{entity.entity_id} already belongs to {cur.ticker}")
+    if cur is not None:
+        names = tuple(dict.fromkeys((*cur.names, *entity.names)))
+        prev = tuple(dict.fromkeys((*cur.previous_codes, *entity.previous_codes)))
+        entity = Entity(entity.entity_id, entity.ticker, names, prev)
+    ents[entity.entity_id] = entity
+    _write_synonyms(ents, sp)
+    return entity
