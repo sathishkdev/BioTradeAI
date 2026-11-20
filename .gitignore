@@ -1,0 +1,31 @@
+# Secrets
+.env
+*.env.local
+
+# Runtime data
+data/*.db
+data/*.db-*
+data/chroma/
+reports/
+*.sqlite
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.vaenv/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+htmlcov/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
