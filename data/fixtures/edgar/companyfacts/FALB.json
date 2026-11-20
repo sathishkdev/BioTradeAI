@@ -1,0 +1,97 @@
+{
+ "cik": 9000006,
+ "entityName": "Fallback Tag Therapeutics",
+ "facts": {
+  "us-gaap": {
+   "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents": {
+    "label": "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
+    "description": "synthetic fixture",
+    "units": {
+     "USD": [
+      {
+       "end": "2025-09-30",
+       "val": 20000000,
+       "accn": "0009000006-25-000003",
+       "fy": 2025,
+       "fp": "Q3",
+       "form": "10-Q",
+       "filed": "2025-11-10"
+      }
+     ]
+    }
+   },
+   "MarketableSecuritiesCurrent": {
+    "label": "MarketableSecuritiesCurrent",
+    "description": "synthetic fixture",
+    "units": {
+     "USD": [
+      {
+       "end": "2025-09-30",
+       "val": 10000000,
+       "accn": "0009000006-25-000003",
+       "fy": 2025,
+       "fp": "Q3",
+       "form": "10-Q",
+       "filed": "2025-11-10"
+      }
+     ]
+    }
+   },
+   "MarketableSecuritiesNoncurrent": {
+    "label": "MarketableSecuritiesNoncurrent",
+    "description": "synthetic fixture",
+    "units": {
+     "USD": [
+      {
+       "end": "2025-09-30",
+       "val": 5000000,
+       "accn": "0009000006-25-000003",
+       "fy": 2025,
+       "fp": "Q3",
+       "form": "10-Q",
+       "filed": "2025-11-10"
+      }
+     ]
+    }
+   },
+   "NetCashProvidedByUsedInOperatingActivities": {
+    "label": "NetCashProvidedByUsedInOperatingActivities",
+    "description": "synthetic fixture",
+    "units": {
+     "USD": [
+      {
+       "start": "2025-01-01",
+       "end": "2025-03-31",
+       "val": -7000000,
+       "accn": "0009000006-25-000001",
+       "fy": 2025,
+       "fp": "Q1",
+       "form": "10-Q",
+       "filed": "2025-05-12"
+      },
+      {
+       "start": "2025-04-01",
+       "end": "2025-06-30",
+       "val": -7000000,
+       "accn": "0009000006-25-000002",
+       "fy": 2025,
+       "fp": "Q2",
+       "form": "10-Q",
+       "filed": "2025-08-11"
+      },
+      {
+       "start": "2025-07-01",
+       "end": "2025-09-30",
+       "val": -7000000,
+       "accn": "0009000006-25-000003",
+       "fy": 2025,
+       "fp": "Q3",
+       "form": "10-Q",
+       "filed": "2025-11-10"
+      }
+     ]
+    }
+   }
+  }
+ }
+}

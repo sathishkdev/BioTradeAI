@@ -1,0 +1,26 @@
+{
+  "protocolSection": {
+    "identificationModule": {
+      "nctId": "NCT09000001",
+      "briefTitle": "Phase 3 Study of ONC-101 in Relapsed Solid Tumors (synthetic fixture)"
+    },
+    "statusModule": {
+      "overallStatus": "ACTIVE_NOT_RECRUITING",
+      "primaryCompletionDateStruct": { "date": "2026-06", "type": "ANTICIPATED" },
+      "completionDateStruct": { "date": "2026-12", "type": "ANTICIPATED" },
+      "lastUpdatePostDateStruct": { "date": "2026-10-02", "type": "ACTUAL" }
+    },
+    "sponsorCollaboratorsModule": {
+      "leadSponsor": { "name": "Onco Example Therapeutics", "class": "INDUSTRY" }
+    },
+    "conditionsModule": { "conditions": ["Solid Tumor"] },
+    "designModule": { "studyType": "INTERVENTIONAL", "phases": ["PHASE3"] },
+    "armsInterventionsModule": {
+      "interventions": [
+        { "type": "DRUG", "name": "ONC-101" },
+        { "type": "DRUG", "name": "Placebo" }
+      ]
+    }
+  },
+  "hasResults": false
+}

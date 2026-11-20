@@ -1,0 +1,43 @@
+{
+ "cik": 9000002,
+ "entityName": "Dilution Example Bio",
+ "facts": {
+  "us-gaap": {
+   "CashAndCashEquivalentsAtCarryingValue": {
+    "label": "CashAndCashEquivalentsAtCarryingValue",
+    "description": "synthetic fixture",
+    "units": {
+     "USD": [
+      {
+       "end": "2026-03-31",
+       "val": 3000000,
+       "accn": "0009000002-26-000001",
+       "fy": 2026,
+       "fp": "Q1",
+       "form": "10-Q",
+       "filed": "2026-05-12"
+      }
+     ]
+    }
+   },
+   "NetCashProvidedByUsedInOperatingActivities": {
+    "label": "NetCashProvidedByUsedInOperatingActivities",
+    "description": "synthetic fixture",
+    "units": {
+     "USD": [
+      {
+       "start": "2026-01-01",
+       "end": "2026-03-31",
+       "val": -9000000,
+       "accn": "0009000002-26-000001",
+       "fy": 2026,
+       "fp": "Q1",
+       "form": "10-Q",
+       "filed": "2026-05-12"
+      }
+     ]
+    }
+   }
+  }
+ }
+}

@@ -10,6 +10,8 @@ max_spread_pct: 0.015
 ttl_hours: 24
 daily_drawdown_limit: 0.03   # vs start-of-day account equity
 max_api_errors: 3            # consecutive
+runway:
+  burn_lookback_quarters: 4    # burn = max(latest quarter, mean of last N quarters)
 orders:
   allowed_types: [limit]
   allow_extended_hours: false   # revisit after Robinhood spike (Phase 3)

@@ -41,6 +41,10 @@ class OrdersConfig(_Strict):
     allow_extended_hours: bool
 
 
+class RunwayConfig(_Strict):
+    burn_lookback_quarters: int = Field(ge=1, le=8)
+
+
 class ToTConfig(_Strict):
     depth: int = Field(ge=1, le=5)
     beam_width: int = Field(ge=1, le=5)
@@ -76,6 +80,7 @@ class GuardrailsConfig(_Strict):
     ttl_hours: float = Field(gt=0.0)
     daily_drawdown_limit: float = Field(gt=0.0, lt=1.0)
     max_api_errors: int = Field(ge=1)
+    runway: RunwayConfig
     orders: OrdersConfig
     tot: ToTConfig
     sell: SellConfig

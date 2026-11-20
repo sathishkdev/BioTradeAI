@@ -1,0 +1,89 @@
+# Hand-verified runway values for the synthetic companyfacts fixtures.
+# All money in $M. burn = max(latest quarter burn, mean burn of last 4 quarters, 0).
+# runway_months = liquidity / burn * 3.
+#
+# These numbers were worked out by hand from the fixture specs in
+# scripts/build_edgar_fixtures.py, independently of src/biotradeai/data/runway.py.
+
+ONCO:
+  # Q1 = -10 (reported); Q2 = -20 - (-10) = -10; Q3 = -30 - (-20) = -10; Q4 = -40 - (-30) = -10
+  # liquidity @2025-12-31 = 25 cash + 15 ShortTermInvestments = 40
+  # burn = max(10, 10) = 10  ->  40 / 10 * 3 = 12.0
+  balance_sheet_date: 2025-12-31
+  liquidity: 40
+  quarterly_burn: 10
+  runway_months: 12.0
+
+ONCO@2025-12-01:
+  # point-in-time before the 10-K was filed (2026-03-02): balance date 2025-09-30, cash 50
+  # quarters Q1..Q3 = -10 each -> burn 10 -> 50 / 10 * 3 = 15.0
+  balance_sheet_date: 2025-09-30
+  liquidity: 50
+  quarterly_burn: 10
+  runway_months: 15.0
+
+DILU:
+  # cash 3, Q1 burn 9 -> 3 / 9 * 3 = 1.0  (dilution trap)
+  balance_sheet_date: 2026-03-31
+  liquidity: 3
+  quarterly_burn: 9
+  runway_months: 1.0
+
+RSTA:
+  # 10-Q/A (filed later) wins: cash @2025-09-30 = 45, Q3 YTD OCF = -48
+  # Q1 = -15; Q2 = -30 - (-15) = -15; Q3 = -48 - (-30) = -18
+  # mean = 16, latest = 18 -> burn 18 -> 45 / 18 * 3 = 7.5
+  balance_sheet_date: 2025-09-30
+  liquidity: 45
+  quarterly_burn: 18
+  runway_months: 7.5
+
+DUPE:
+  # Q1'25 = -5 (reported twice, same value); Q2 = -6; Q3 = -6; Q4 = -24 - (-17) = -7; Q1'26 = -6
+  # last 4 = Q1'26 -6, Q4 -7, Q3 -6, Q2 -6 -> mean 6.25, latest 6 -> burn 6.25
+  # liquidity @2026-03-31 = 54 -> 54 / 6.25 * 3 = 25.92
+  balance_sheet_date: 2026-03-31
+  liquidity: 54
+  quarterly_burn: 6.25
+  runway_months: 25.92
+
+NOMS:
+  # Q1 = -4; Q2 = -10 - (-4) = -6; mean 5, latest 6 -> burn 6
+  # liquidity = 30 (no securities) -> 30 / 6 * 3 = 15.0
+  balance_sheet_date: 2025-06-30
+  liquidity: 30
+  quarterly_burn: 6
+  runway_months: 15.0
+
+FALB:
+  # cash from fallback tag (incl. restricted) 20 + current MS 10 + non-current MS 5 = 35
+  # three reported 3-month quarters of -7 -> burn 7 -> 35 / 7 * 3 = 15.0
+  balance_sheet_date: 2025-09-30
+  liquidity: 35
+  quarterly_burn: 7
+  runway_months: 15.0
+
+PROF:
+  # Q1 = +5; Q2 = 8 - 5 = +3 -> latest burn -3, mean burn -4 -> max(-3, -4, 0) = 0 -> infinite
+  balance_sheet_date: 2025-06-30
+  liquidity: 100
+  quarterly_burn: 0
+  runway_months: .inf
+
+ANNL:
+  # no quarters; annual OCF -48 / 4 = -12 -> burn 12 -> 72 / 12 * 3 = 18.0
+  balance_sheet_date: 2025-12-31
+  liquidity: 72
+  quarterly_burn: 12
+  runway_months: 18.0
+
+NOCF:
+  error: RunwayUnavailableError
+
+GAPQ:
+  # Q1 = -8 (reported); Q3 not derivable (9M vs 3M skips a quarter); Q4 = -36 - (-27) = -9
+  # mean of (Q4, Q1) = 8.5, latest 9 -> burn 9 -> 45 / 9 * 3 = 15.0 (gap noted)
+  balance_sheet_date: 2025-12-31
+  liquidity: 45
+  quarterly_burn: 9
+  runway_months: 15.0

@@ -15,8 +15,9 @@ See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the full design and
 | Phase | What | Status |
 |---|---|---|
 | 0 | Bootstrap: config, schemas, SQLite audit store, LLM switcher | done |
-| 1 | Data layer (CT.gov, EDGAR, runway) | next |
-| 2–10 | Guardrails, brokers, RAG, agents, sell FSM, backtest, paper, shadow, live | planned |
+| 1 | Data layer (CT.gov, EDGAR, runway, catalysts.csv) | done |
+| 2 | Guardrails, brokers, kill-switch | next |
+| 3–10 | Robinhood spike, RAG, agents, sell FSM, backtest, paper, shadow, live | planned |
 
 ## Setup (Windows PowerShell)
 
@@ -36,6 +37,10 @@ python -m biotradeai config-check          # validate config/guardrails.yaml
 python -m biotradeai init-db               # create data/biotradeai.db
 python -m biotradeai audit-tail -n 20      # show audit log + verify hash chain
 python -m biotradeai llm-ping --llm ollama:llama3.2:3b
+python -m biotradeai runway ONCO --facts-file data\fixtures\edgar\companyfacts\ONCO.json
+python -m biotradeai runway MRNA            # live SEC data (needs SEC_USER_AGENT)
+python -m biotradeai trial NCT04368728      # live ClinicalTrials.gov
+python -m biotradeai catalysts
 ```
 
 Quality gates (run before every commit):

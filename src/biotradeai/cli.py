@@ -5,6 +5,9 @@ Usage:
     python -m biotradeai init-db
     python -m biotradeai audit-tail [-n 20]
     python -m biotradeai llm-ping [--llm ollama:llama3.2:3b] [--role research]
+    python -m biotradeai runway TICKER [--facts-file F] [--as-of YYYY-MM-DD]
+    python -m biotradeai trial NCT######## [--file F]
+    python -m biotradeai catalysts
 """
 
 from __future__ import annotations
@@ -13,11 +16,19 @@ import argparse
 import json
 import sys
 from collections.abc import Sequence
+from datetime import UTC, date, datetime
+from decimal import Decimal
+from pathlib import Path
 
 from dotenv import load_dotenv
 
 from biotradeai.agents.llm import LLMError, LLMMessage, make_llm_client, resolve_spec
 from biotradeai.config import ConfigError, load_config
+from biotradeai.data.catalysts import CatalystFileError, load_catalysts
+from biotradeai.data.clinicaltrials import ClinicalTrialsClient, parse_study
+from biotradeai.data.edgar import EdgarClient, EdgarConfigError, parse_company_facts
+from biotradeai.data.http import FetchError
+from biotradeai.data.runway import RunwayUnavailableError, compute_runway
 from biotradeai.paths import REPO_ROOT
 from biotradeai.store.sqlite_store import SQLiteStore
 
@@ -56,6 +67,62 @@ def _cmd_llm_ping(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_runway(args: argparse.Namespace) -> int:
+    cfg = load_config()
+    as_of = date.fromisoformat(args.as_of) if args.as_of else None
+    if args.facts_file:
+        raw = json.loads(Path(args.facts_file).read_text(encoding="utf-8"))
+        facts = parse_company_facts(raw, datetime.now(UTC))
+    else:
+        client = EdgarClient()
+        facts = client.company_facts(client.ticker_to_cik(args.ticker))
+    r = compute_runway(facts, lookback_quarters=cfg.runway.burn_lookback_quarters, as_of=as_of)
+    m = Decimal(1_000_000)
+    print(f"{args.ticker.upper()}  {facts.entity_name}  (CIK {r.cik})")
+    print(f"  balance sheet date : {r.balance_sheet_date}")
+    print(f"  cash               : ${r.cash / m:,.2f}M")
+    print(f"  securities (cur)   : ${r.securities_current / m:,.2f}M")
+    print(f"  securities (non)   : ${r.securities_noncurrent / m:,.2f}M")
+    print(f"  liquidity          : ${r.liquidity / m:,.2f}M")
+    print(f"  quarterly burn     : ${r.quarterly_burn / m:,.2f}M")
+    print(f"  runway             : {r.runway_months:.2f} months")
+    for q in r.quarters_used:
+        print(f"    quarter {q.start}..{q.end}  OCF ${q.ocf / m:,.2f}M  [{q.method}]")
+    for n in r.notes:
+        print(f"  note: {n}")
+    veto = r.runway_months < cfg.min_runway_months
+    fatal = r.runway_months < cfg.fatal_runway_months
+    print(f"  vs guardrails      : fatal_prune={fatal}  risk_veto={veto}")
+    return 0
+
+
+def _cmd_trial(args: argparse.Namespace) -> int:
+    if args.file:
+        rec = parse_study(json.loads(Path(args.file).read_text(encoding="utf-8")),
+                          datetime.now(UTC))
+    else:
+        rec = ClinicalTrialsClient().get_study(args.nct_id)
+    print(f"{rec.nct_id}  {rec.title}")
+    print(f"  sponsor  : {rec.sponsor}")
+    print(f"  status   : {rec.overall_status}   phases: {', '.join(rec.phases) or '-'}")
+    print(f"  drugs    : {', '.join(rec.interventions) or '-'}")
+    for label, d in (("primary completion", rec.primary_completion),
+                     ("completion", rec.completion)):
+        if d:
+            print(f"  {label:<19}: {d.raw} ({d.kind.value}, claimed by sponsor)")
+    print(f"  last update posted : {rec.last_update_posted}")
+    return 0
+
+
+def _cmd_catalysts(_: argparse.Namespace) -> int:
+    rows = load_catalysts()
+    if not rows:
+        print("data/catalysts.csv has no rows yet (header only).")
+    for c in rows:
+        print(f"{c.date}  {c.ticker:<6} {c.event:<15} {c.drug:<20} {c.source_url}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="biotradeai", description=__doc__.splitlines()[0])
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -70,6 +137,16 @@ def build_parser() -> argparse.ArgumentParser:
     ping.add_argument("--llm", help="provider:model, e.g. ollama:llama3.2:3b")
     ping.add_argument("--role", help="agent role whose env override to use (research, risk)")
     ping.set_defaults(fn=_cmd_llm_ping)
+    rw = sub.add_parser("runway", help="cash runway from SEC XBRL facts")
+    rw.add_argument("ticker")
+    rw.add_argument("--facts-file", help="offline companyfacts JSON instead of live SEC")
+    rw.add_argument("--as-of", help="point-in-time date YYYY-MM-DD (facts filed on/before)")
+    rw.set_defaults(fn=_cmd_runway)
+    tr = sub.add_parser("trial", help="show a ClinicalTrials.gov study")
+    tr.add_argument("nct_id")
+    tr.add_argument("--file", help="offline study JSON instead of live CT.gov")
+    tr.set_defaults(fn=_cmd_trial)
+    sub.add_parser("catalysts", help="list data/catalysts.csv").set_defaults(fn=_cmd_catalysts)
     return p
 
 
@@ -78,7 +155,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         rc: int = args.fn(args)
-    except (ConfigError, LLMError) as exc:
+    except (ConfigError, LLMError, EdgarConfigError, FetchError, RunwayUnavailableError,
+            CatalystFileError, KeyError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     return rc

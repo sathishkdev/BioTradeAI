@@ -1,0 +1,21 @@
+{
+  "protocolSection": {
+    "identificationModule": {
+      "nctId": "NCT09000002",
+      "officialTitle": "A Phase 2/3 Trial of DLT-7 (synthetic fixture)"
+    },
+    "statusModule": {
+      "overallStatus": "COMPLETED",
+      "primaryCompletionDateStruct": { "date": "2025-11-14", "type": "ACTUAL" },
+      "completionDateStruct": { "date": "2026-01-30", "type": "ACTUAL" },
+      "lastUpdatePostDateStruct": { "date": "2026-02-11", "type": "ACTUAL" }
+    },
+    "sponsorCollaboratorsModule": {
+      "leadSponsor": { "name": "Dilution Example Bio", "class": "INDUSTRY" }
+    },
+    "conditionsModule": { "conditions": ["Rare Disease"] },
+    "designModule": { "studyType": "INTERVENTIONAL", "phases": ["PHASE2", "PHASE3"] },
+    "armsInterventionsModule": { "interventions": [{ "type": "DRUG", "name": "DLT-7" }] }
+  },
+  "hasResults": true
+}

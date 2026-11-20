@@ -1,0 +1,26 @@
+{
+ "cik": 9000009,
+ "entityName": "No Cash Facts Inc",
+ "facts": {
+  "us-gaap": {
+   "NetCashProvidedByUsedInOperatingActivities": {
+    "label": "NetCashProvidedByUsedInOperatingActivities",
+    "description": "synthetic fixture",
+    "units": {
+     "USD": [
+      {
+       "start": "2025-01-01",
+       "end": "2025-03-31",
+       "val": -3000000,
+       "accn": "0009000009-25-000001",
+       "fy": 2025,
+       "fp": "Q1",
+       "form": "10-Q",
+       "filed": "2025-05-15"
+      }
+     ]
+    }
+   }
+  }
+ }
+}

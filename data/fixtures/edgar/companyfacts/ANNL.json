@@ -1,0 +1,43 @@
+{
+ "cik": 9000008,
+ "entityName": "Annual Only Pharma",
+ "facts": {
+  "us-gaap": {
+   "CashAndCashEquivalentsAtCarryingValue": {
+    "label": "CashAndCashEquivalentsAtCarryingValue",
+    "description": "synthetic fixture",
+    "units": {
+     "USD": [
+      {
+       "end": "2025-12-31",
+       "val": 72000000,
+       "accn": "0009000008-26-000001",
+       "fy": 2025,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2026-03-20"
+      }
+     ]
+    }
+   },
+   "NetCashProvidedByUsedInOperatingActivities": {
+    "label": "NetCashProvidedByUsedInOperatingActivities",
+    "description": "synthetic fixture",
+    "units": {
+     "USD": [
+      {
+       "start": "2025-01-01",
+       "end": "2025-12-31",
+       "val": -48000000,
+       "accn": "0009000008-26-000001",
+       "fy": 2025,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2026-03-20"
+      }
+     ]
+    }
+   }
+  }
+ }
+}
