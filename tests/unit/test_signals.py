@@ -90,3 +90,13 @@ def test_find_material_changes() -> None:
             "Acme may consider strategic alternatives, including a merger agreement.")
     got = [(c.kind, c.drugs) for c in find_material_changes(text)]
     assert got == [("acquisition", ()), ("license", ("ABC-123",))]
+
+
+@pytest.mark.parametrize("text", [
+    "The FDA extended the PDUFA target action date from March 15, 2027 to June 15, 2027.",
+    "The PDUFA date is now June 15, 2027, extended from March 15, 2027.",
+    "The new PDUFA date of June 15, 2027 replaces the prior March 15, 2027 date.",
+])
+def test_date_change_sentences_pick_the_new_date(text: str) -> None:
+    w = parse_when(text)
+    assert w is not None and w.exact == date(2027, 6, 15)

@@ -28,6 +28,7 @@ from biotradeai.brokers.base import Broker
 from biotradeai.brokers.execution import ExecStatus, ExecutionService
 from biotradeai.config import GuardrailsConfig, Mode
 from biotradeai.data.catalysts import Catalyst, upcoming
+from biotradeai.data.http import FetchError
 from biotradeai.data.outcomes import Outcome
 from biotradeai.events import (
     CatalystOutcome,
@@ -73,6 +74,7 @@ class CycleReport:
     orders: list[dict[str, Any]] = field(default_factory=list)
     exits: list[dict[str, Any]] = field(default_factory=list)
     breaches: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
     halted: str | None = None
 
 
@@ -152,7 +154,8 @@ class PaperRunner:
             rep.halted = "kill-switch tripped on a compliance breach"
         self._audit("paper.cycle_done", {"evaluated": rep.evaluated, "skipped": rep.skipped,
                                          "orders": len(rep.orders), "exits": len(rep.exits),
-                                         "breaches": rep.breaches, "halted": rep.halted})
+                                         "breaches": rep.breaches, "errors": rep.errors[:20],
+                                         "halted": rep.halted})
         return rep
 
     # ------------------------------------------------------------------ buys
@@ -209,7 +212,7 @@ class PaperRunner:
             return
         pos = SellPosition(ticker=c.ticker, qty=order.qty, entry_price=order.limit_price,
                            catalyst_event=EVENT_MAP.get(c.event, c.event.lower()),
-                           catalyst_date=c.date)
+                           catalyst_date=c.date, opened_on=self._clock().date())
         self.store.save_sell_state(c.ticker, pos.model_dump(mode="json"))
         self.store.upsert_position(c.ticker, order.qty, str(order.limit_price),
                                    catalyst_date=c.date.isoformat())
@@ -276,7 +279,7 @@ class PaperRunner:
             if q.bid > 0 and q.ask > 0:
                 tick = PriceTick(ticker=p.ticker, ts=now, bid=q.bid, ask=q.ask)
                 pos, exits = engine.process(pos, [tick], run_id=run_id)
-            _, more = engine.process(pos, self._events(pos, now, catalysts, outcomes),
+            _, more = engine.process(pos, self._events(pos, now, catalysts, outcomes, rep.errors),
                                      run_id=run_id)
             exits += more
             for ex in exits:
@@ -293,9 +296,11 @@ class PaperRunner:
                 rep.exits.append(entry)
 
     def _events(self, pos: SellPosition, now: datetime, catalysts: list[Catalyst],
-                outcomes: list[Outcome]) -> list[SellEvent]:
+                outcomes: list[Outcome], errors: list[str]) -> list[SellEvent]:
         evs: list[SellEvent] = []
-        earliest = pos.catalyst_date - timedelta(days=OUTCOME_EARLY_DAYS)
+        # A window event's date is the window END, so a readout can come much earlier:
+        # anything after the entry counts. Unknown entry -> a margin before the date.
+        earliest = pos.opened_on or pos.catalyst_date - timedelta(days=OUTCOME_EARLY_DAYS)
         for o in outcomes:
             if o.ticker == pos.ticker and earliest <= o.date <= now.date():
                 evs.append(CatalystOutcome(ticker=pos.ticker, ts=now, result=o.result,
@@ -305,7 +310,13 @@ class PaperRunner:
                 evs.append(CatalystScheduled(ticker=pos.ticker, ts=now, event=c.event,
                                              catalyst_date=c.date))
         if self._trials is not None:
-            evs += self._trials.poll(pos.ticker)
+            try:
+                evs += self._trials.poll(pos.ticker)
+            except FetchError as exc:
+                errors.append(f"{pos.ticker} trials: {exc}"[:200])
         if self._filings is not None:
-            evs += self._filings.poll(pos.ticker, since=now.date() - timedelta(days=7))
+            try:
+                evs += self._filings.poll(pos.ticker, since=now.date() - timedelta(days=7))
+            except FetchError as exc:
+                errors.append(f"{pos.ticker} filings: {exc}"[:200])
         return evs

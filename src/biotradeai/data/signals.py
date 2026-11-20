@@ -72,12 +72,30 @@ _PERIODS: list[tuple[re.Pattern[str], str]] = [
 ]
 
 
+_NEW_CUE = re.compile(r"\b(to|until|now|new(ly)?|revised|is)\s+(?:the\s+)?$", re.I)
+_OLD_CUE = re.compile(r"\b(from|previously|originally|prior|old)\s+(?:the\s+)?$", re.I)
+
+
+def _pick(matches: list[re.Match[str]], text: str) -> re.Match[str]:
+    """When a sentence states two dates ('moved from March 15 to June 15'), the new one
+    is the date after 'to/until/now'; otherwise the one NOT after 'from'; else the last."""
+    if len(matches) == 1:
+        return matches[0]
+    for m in matches:
+        if _NEW_CUE.search(text[max(0, m.start() - 20): m.start()]):
+            return m
+    rest = [m for m in matches if not _OLD_CUE.search(text[max(0, m.start() - 20): m.start()])]
+    return (rest or matches)[-1]
+
+
 def parse_when(text: str) -> When | None:
-    """The most precise date or window mentioned in ``text`` (first match by precision)."""
+    """The most precise date or window mentioned in ``text``. If a sentence gives two
+    dates of the same precision (a change), the new date is chosen (``_pick``)."""
     for pat, kind in _PERIODS:
-        m = pat.search(text)
-        if not m:
+        found = list(pat.finditer(text))
+        if not found:
             continue
+        m = _pick(found, text)
         g = m.groups()
         try:
             if kind == "day":

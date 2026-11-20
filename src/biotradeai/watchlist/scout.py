@@ -31,7 +31,13 @@ from biotradeai.data.edgar import EdgarClient
 from biotradeai.data.http import FetchError
 from biotradeai.data.pacing import paced
 from biotradeai.data.runway import RunwayUnavailableError, compute_runway
-from biotradeai.data.secindex import Company, SecDirectory, business_days, submission_text
+from biotradeai.data.secindex import (
+    Company,
+    SecDirectory,
+    business_days,
+    day_done,
+    submission_text,
+)
 from biotradeai.data.signals import CatalystMention, find_catalysts
 from biotradeai.guardrails import rules
 from biotradeai.store.sqlite_store import SQLiteStore
@@ -166,8 +172,11 @@ class Scout:
             except FetchError as exc:
                 rep.errors.append(f"index {d}: {exc}")
                 continue
-            rep.days_scanned.append(d.isoformat())
-            filings += [f for f in day if f.form in ("8-K", "8-K/A")]
+            if day is not None:
+                rep.days_scanned.append(d.isoformat())
+                filings += [f for f in day if f.form in ("8-K", "8-K/A")]
+            if not day_done(d, self.today, day):
+                break  # today's index isn't out yet: retry it next run
             self.store.kv_set("scout.last_index_day", d.isoformat())
         for f in paced(filings, window_s=self.window_s, sleep=self._sleep):
             try:
@@ -309,9 +318,11 @@ class Scout:
                 o = self._cand(orig, list(c.names))
                 o.preferred_name = name
                 o.trials = o.trials or list(c.trials)
-                o.sec = o.sec or list(c.sec)
+                # The licensee's 8-K sentences are its own, not the originator's: shown
+                # for context only, never as the originator's catalysts or score.
                 o.licensing = {"code": name, "ticker": c.company.ticker,
-                               "company": c.company.name, "role": "likely originator"}
+                               "company": c.company.name, "role": "likely originator",
+                               "licensee_catalysts": c.sec[:3]}
                 o.match = (f"originator by drug code {name} (ticker {tk}); trials sponsored "
                            f"by {c.company.name}")
 

@@ -118,6 +118,14 @@ class SecDirectory:
         return Company(str(row["cik"]), str(row["name"]), row.get("sic"),
                        tuple(row["tickers"]), tuple(row["exchanges"]))
 
-    def filings(self, day: date) -> list[IndexEntry]:
+    def filings(self, day: date) -> list[IndexEntry] | None:
+        """Every filing on ``day``; None when SEC has no index for it (weekend, holiday,
+        or not published yet - today's index appears only in the evening)."""
         text = self.edgar.daily_form_index(day)
-        return parse_form_index(text) if text else []
+        return parse_form_index(text) if text else None
+
+
+def day_done(day: date, today: date, filings: list[IndexEntry] | None) -> bool:
+    """A day may be marked processed only if its index was read, or it is in the past
+    (no index for a past day = weekend/holiday). Today without an index is retried."""
+    return filings is not None or day < today

@@ -419,3 +419,40 @@ def test_slipped_trial_triggers_time_stop_exit(cfg: GuardrailsConfig, rates: Bas
     rep = r.cycle([ONCO_CAT], [])
     assert [(e["trigger"], e["status"]) for e in rep.exits] == [("time_stop", "placed")]
     assert _sells(broker)[0].qty == 100
+
+
+# ------------------------------------------------------------------ review regressions
+
+
+def test_early_readout_in_window_still_sells(cfg: GuardrailsConfig, rates: BaseRates,
+                                             store: SQLiteStore, fx: ScenarioFixture) -> None:
+    """Window events use the window END as the date; a readout early in the window,
+    after the position was opened, must still reach the sell machine."""
+    broker = _fake()
+    broker.positions["ONCO"] = Position("ONCO", 100, Decimal("10"), Decimal(1000))
+    store.save_sell_state("ONCO", SellPosition(
+        ticker="ONCO", qty=100, entry_price=Decimal("10"), catalyst_event="phase3_readout",
+        catalyst_date=date(2027, 3, 31), opened_on=date(2026, 12, 1)).model_dump(mode="json"))
+    now = datetime(2027, 1, 21, 15, tzinfo=UTC)
+    early = Outcome("ONCO", "ONC-101", date(2027, 1, 20), ReadoutResult.NEGATIVE, URL)
+    rep = _runner(cfg, rates, store, fx, broker, Approver(True), now=now).cycle(
+        [Catalyst("ONCO", "ONC-101", "PHASE3_READOUT", date(2027, 3, 31), URL)], [early])
+    assert [(e["trigger"], e["qty"]) for e in rep.exits] == [("negative_readout", 100)]
+
+
+class FailingTrials:
+    def poll(self, ticker: str) -> list[CompletionDateChange]:
+        from biotradeai.data.http import FetchError
+        raise FetchError("ctgov is switched off until tomorrow (UTC)")
+
+
+def test_failed_poll_does_not_abort_cycle(cfg: GuardrailsConfig, rates: BaseRates,
+                                          store: SQLiteStore, fx: ScenarioFixture) -> None:
+    broker = _holding(store)
+    broker.quotes["ONCO"] = (Decimal("13.00"), Decimal("13.02"))
+    r = _runner(cfg, rates, store, fx, broker, Approver(True),
+                now=datetime(2026, 12, 1, 15, tzinfo=UTC))
+    r._trials = FailingTrials()
+    rep = r.cycle([ONCO_CAT], [])
+    assert rep.exits[0]["trigger"] == "profit_target"  # other events still processed
+    assert any("switched off" in e for e in rep.errors)

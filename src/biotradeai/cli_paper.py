@@ -113,6 +113,8 @@ def cmd_paper_run(args: argparse.Namespace) -> int:
         print(f"  order     {o}")
     for b in rep.breaches:
         print(f"  BREACH    {b}")
+    for err in rep.errors:
+        print(f"  note      {err}")
     return 1 if rep.halted else 0
 
 

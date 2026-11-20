@@ -126,8 +126,13 @@ class DocumentSync:
         """First sync after approval: latest 10-K/10-Qs, 180 days of 8-Ks, trials, PubMed."""
         rep = SyncReport(e.id)
         steps: list[Callable[[], object]] = []
+        subs = None
         if self.edgar is not None:
-            subs = self.edgar.submissions(e.cik)
+            try:
+                subs = self.edgar.submissions(e.cik)
+            except FetchError as exc:
+                rep.errors.append(f"SEC filing list: {exc}"[:200])
+        if self.edgar is not None and subs is not None:
             periodic = subs.by_form("10-K")[:1] + subs.by_form("10-Q")[:2]
             steps += [partial(self.sec_periodic, e, f, rep) for f in periodic]
             since = today - timedelta(days=EIGHT_K_LOOKBACK_DAYS)

@@ -25,9 +25,10 @@ from datetime import date, timedelta
 from biotradeai.data.clinicaltrials import ClinicalTrialsClient
 from biotradeai.data.http import FetchError
 from biotradeai.data.pacing import paced, rolling_batch
-from biotradeai.data.secindex import IndexEntry, SecDirectory, business_days
+from biotradeai.data.secindex import IndexEntry, SecDirectory, business_days, day_done
 from biotradeai.data.signals import (
     OutcomeKind,
+    drug_mentions,
     find_catalysts,
     find_material_changes,
     find_outcomes,
@@ -106,11 +107,14 @@ class Follower:
         rep.add_docs(r)
         if not text:
             return
-        single = len(entries) == 1
+        all_drugs = drug_mentions(text)
         for e in entries:
             if e.status is not Status.APPROVED:
                 continue
             names = tuple(e.drug_names)
+            # A mention that names no drug is credited to this drug only when this is the
+            # company's only followed drug AND the filing names no other drug at all.
+            single = len(entries) == 1 and all(mentions_any((d,), names) for d in all_drugs)
             for m in find_catalysts(text):
                 if mentions_any(m.drugs, names) or (single and not m.drugs):
                     ch = record_catalyst(self.store, e, m, url=f.url, filed=f.filed,
@@ -173,8 +177,10 @@ class Follower:
         for e in approved:
             key = f"sync.initial.{e.entity_id}"
             if self.store.kv_get(key) is None:
-                rep.add_docs(self.sync.initial(e, today=self.today))
-                self.store.kv_set(key, self.today.isoformat())
+                r = self.sync.initial(e, today=self.today)
+                rep.add_docs(r)
+                if not r.errors:  # retried next run otherwise (already-added docs dedupe)
+                    self.store.kv_set(key, self.today.isoformat())
 
         # 2. new SEC filings from the daily index
         last = self.store.kv_get("follow.last_index_day")
@@ -184,10 +190,13 @@ class Follower:
         todo: list[IndexEntry] = []
         for d in business_days(start, self.today):
             try:
-                todo += [f for f in self.dir.filings(d) if f.cik in by_cik]
+                day = self.dir.filings(d)
             except FetchError as exc:
                 rep.errors.append(f"index {d}: {exc}"[:200])
-                continue
+                break  # keep the marker before this day so it is retried
+            todo += [f for f in day or [] if f.cik in by_cik]
+            if not day_done(d, self.today, day):
+                break  # today's index isn't out yet: retry it next run
             self.store.kv_set("follow.last_index_day", d.isoformat())
         for f in paced(todo, window_s=self.window_s, sleep=self._sleep):
             rep.filings += 1

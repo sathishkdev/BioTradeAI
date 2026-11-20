@@ -56,7 +56,8 @@ _ALLOWED: dict[Status, frozenset[Status]] = {
     Status.PROPOSED: frozenset({Status.APPROVED, Status.REJECTED}),
     Status.APPROVED: frozenset({Status.PAUSED, Status.RETIRED}),
     Status.PAUSED: frozenset({Status.APPROVED, Status.RETIRED}),
-    Status.REJECTED: frozenset({Status.PROPOSED}),  # only via a material change
+    # back to proposed only via a material change; a human may approve after rejecting
+    Status.REJECTED: frozenset({Status.PROPOSED, Status.APPROVED}),
     Status.RETIRED: frozenset({Status.PROPOSED}),  # only via a material change
 }
 
@@ -70,7 +71,9 @@ def drug_key(name: str) -> str:
 
 
 def entity_id_for(ticker: str, drug: str) -> str:
-    return f"ENT-{ticker.upper()}-{drug_key(drug)[:30]}"
+    """ENT-<TICKER>-<DRUG>, letters/digits only, within the ontology's 41-char body."""
+    t = re.sub(r"[^A-Z0-9]", "", ticker.upper())[:10] or "X"
+    return f"ENT-{t}-{drug_key(drug)[: 40 - len(t)] or 'DRUG'}"
 
 
 def quarter_end_after(d: date) -> date:

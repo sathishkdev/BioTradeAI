@@ -162,10 +162,9 @@ def cmd_show(args: argparse.Namespace) -> int:
 
 def cmd_approve(args: argparse.Namespace) -> int:
     wl = Watchlist()
-    e = wl.get(args.id)
-    upsert_entity(Entity(e.entity_id, e.ticker, tuple(e.drug_names)))
-    wl.approve(e.id, by=getpass.getuser(), note=args.note)
-    wl.save()
+    e = wl.approve(args.id, by=getpass.getuser(), note=args.note)  # raises if not allowed
+    upsert_entity(Entity(e.entity_id, e.ticker, tuple(e.drug_names)))  # raises on collision
+    wl.save()  # only now is anything written
     SQLiteStore().append_audit("watchlist.approved", {"id": e.id, "names": e.drug_names,
                                                       "note": args.note}, ticker=e.ticker)
     print(f"approved {e.id}; names added to data/synonyms.yaml. Next "

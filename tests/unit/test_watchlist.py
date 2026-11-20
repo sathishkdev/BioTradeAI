@@ -527,3 +527,78 @@ def test_own_ticker_code_is_not_licensing(tmp_path: Path, store: SQLiteStore,
     rep = _scout(mock, store, wl, cfg).run()
     assert rep.proposed == ["ONCO:ONCO-101"]  # own code preferred as the ID
     assert wl.get("ONCO:ONCO-101").card["licensing"] is None
+
+
+# ------------------------------------------------------------------ review regressions
+
+
+def test_today_without_index_is_retried(tmp_path: Path, store: SQLiteStore,
+                                        cfg: GuardrailsConfig) -> None:
+    mock = Mock()
+    wl, _ = _approved(tmp_path)
+    store.kv_set("follow.last_index_day", "2026-11-19")
+    store.kv_set("sync.initial.ENT-ONCO-ONC101", "done")
+    _follower(mock, store, wl, cfg).run()  # 2026-11-20 index not published yet
+    assert store.kv_get("follow.last_index_day") == "2026-11-19"
+    _filing(mock, "8-K", "<p>The FDA assigned a PDUFA target action date of April 2, 2027 "
+                         "for ONC-101.</p>")  # published later that day
+    rep = _follower(mock, store, wl, cfg).run()
+    assert any("PDUFA new" in x for x in rep.events)
+    assert store.kv_get("follow.last_index_day") == "2026-11-20"
+
+
+def test_unnamed_mention_not_credited_when_filing_names_other_drug(
+        tmp_path: Path, store: SQLiteStore, cfg: GuardrailsConfig) -> None:
+    mock = Mock()
+    wl, e = _approved(tmp_path)
+    _filing(mock, "8-K", "<p>ONC-300 for solid tumors had its NDA accepted. Our partner "
+                         "confirmed timelines. The FDA set a PDUFA target action date of May 1, "
+                         "2027.</p>")
+    _follower(mock, store, wl, cfg).run()
+    assert store.list_events(entity_id=e.entity_id) == []
+
+
+def test_sync_error_is_recorded_and_retried(tmp_path: Path, store: SQLiteStore,
+                                           cfg: GuardrailsConfig) -> None:
+    class DownSec(Mock):
+        def __call__(self, req: httpx.Request) -> httpx.Response:
+            if req.url.path.startswith("/submissions/"):
+                return httpx.Response(503)
+            return super().__call__(req)
+
+    wl, e = _approved(tmp_path)
+    rep = _follower(DownSec(), store, wl, cfg).run()  # must not raise
+    assert any("SEC filing list" in x for x in rep.errors)
+    assert store.kv_get(f"sync.initial.{e.entity_id}") is None  # retried next run
+
+
+def test_entity_ids_always_valid_and_upsert_validates(tmp_path: Path) -> None:
+    from biotradeai.rag.ontology import ENTITY_ID
+    from biotradeai.watchlist.model import entity_id_for
+    for tk, drug in [("BRK.B", "x-1"), ("ABCDEFGHIJ", "Sacituzumab govitecan-hziy extra long"),
+                     ("ONCO", "ONC-101")]:
+        assert ENTITY_ID.match(entity_id_for(tk, drug)), (tk, drug)
+    p = tmp_path / "syn.yaml"
+    with pytest.raises(OntologyError):
+        upsert_entity(Entity("ENT-BRK.B-X1", "BRK.B", ("X-1",)), synonyms=p)
+    assert not p.exists()  # nothing written
+
+
+def test_originator_does_not_inherit_licensee_catalysts(
+        tmp_path: Path, store: SQLiteStore, cfg: GuardrailsConfig) -> None:
+    mock = Mock()
+    _with_8k(mock)  # Onco 8-K: PDUFA for ONC-101
+    mock.study["protocolSection"]["armsInterventionsModule"]["interventions"] = [
+        {"type": "DRUG", "name": "ONC-101 (VRDX-003)"}]
+    wl = Watchlist(tmp_path / "wl.yaml")
+    _scout(mock, store, wl, cfg).run()
+    orig = wl.get("VRDX:VRDX-003")
+    assert orig.card["catalysts"] == [] and orig.card["sources"] == ["ClinicalTrials.gov"]
+    assert orig.card["licensing"]["licensee_catalysts"][0]["event"] == "PDUFA"
+
+
+def test_rejected_pair_can_be_approved_by_human(tmp_path: Path) -> None:
+    wl = Watchlist(tmp_path / "wl.yaml")
+    wl.add_proposal(_entry())
+    wl.reject("ONCO:ONC-101", by="me", reason="oops")
+    assert wl.approve("ONCO:ONC-101", by="me").status is Status.APPROVED

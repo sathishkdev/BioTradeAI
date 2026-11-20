@@ -224,6 +224,8 @@ def upsert_entity(entity: Entity, *, synonyms: Path | None = None) -> Entity:
     """Add or extend one entity in synonyms.yaml. Called only from a HUMAN approval
     (``watchlist approve``), never by an agent on its own. Names are merged, never
     removed; a collision with another entity raises OntologyError and writes nothing."""
+    if not ENTITY_ID.match(entity.entity_id) or not TICKER.match(entity.ticker):
+        raise OntologyError(f"bad entity id {entity.entity_id!r} or ticker {entity.ticker!r}")
     sp = synonyms or default_path()
     ents = dict(load_ontology(sp).entities)
     cur = ents.get(entity.entity_id)

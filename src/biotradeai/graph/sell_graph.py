@@ -72,6 +72,7 @@ class SellPosition(BaseModel):
     entry_price: Price
     catalyst_event: str
     catalyst_date: date
+    opened_on: date | None = None  # entry day; outcomes after it are always relevant
     nct_id: str | None = None
     baseline_completion: date | None = None  # primary completion date at entry
     state: SellState = SellState.HOLDING
