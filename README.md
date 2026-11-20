@@ -20,8 +20,8 @@ See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the full design and
 | 4 | RAG: ontology, ingest, hybrid retrieval, tier/conflict resolution | done |
 | 5 | Agents + Tree of Thoughts + LangGraph supervisor | done |
 | 6 | Sell state machine (deterministic), EDGAR/CT.gov pollers | done |
-| 7 | Backtest and evaluation | next |
-| 8 | Alpaca paper trading | planned |
+| 7 | Point-in-time backtest, metrics, reports | done |
+| 8 | Alpaca paper trading (needs your Alpaca paper keys) | next |
 | 3, 9, 10 | Robinhood spike, shadow mode, live pilot (needs your accounts) | last |
 
 ## Setup (Windows PowerShell)
@@ -57,6 +57,8 @@ python -m biotradeai ontology resolve oncotinib   # list | proposals | propose |
 python -m biotradeai evaluate --fixture data\fixtures\scenarios\onco.yaml   # ToT -> risk -> approve
 python -m biotradeai evaluate --fixture data\fixtures\scenarios\onco.yaml --llm ollama:llama3.2:3b
 python -m biotradeai sell-replay                  # replay all sell-trigger fixtures
+python -m biotradeai backtest                     # base-rate baseline -> reports/
+python -m biotradeai backtest --llm ollama:llama3.2:3b
 ```
 
 Quality gates (run before every commit):

@@ -18,6 +18,8 @@ from typing import Any
 
 from biotradeai.agents.base_rates import load_base_rates
 from biotradeai.agents.llm import LLMClient, make_llm_client
+from biotradeai.backtest.harness import FIXTURE, base_llm, load_cases
+from biotradeai.backtest.runner import run_backtest
 from biotradeai.brokers.approval import ApprovalAuthority, ApprovalError, load_secret
 from biotradeai.brokers.execution import ExecutionService
 from biotradeai.brokers.fake_broker import FakeBroker
@@ -32,6 +34,7 @@ from biotradeai.graph.buy_graph import (
     start_run,
 )
 from biotradeai.graph.sell_graph import SellEngine
+from biotradeai.rag.embeddings import make_embedder
 from biotradeai.scenario_fixtures import load_fixture
 from biotradeai.schemas import ApprovalToken, Decision, StagedOrder
 from biotradeai.sell_replay import load_replay
@@ -173,7 +176,40 @@ def cmd_sell_replay(args: argparse.Namespace) -> int:
     return 1 if bad else 0
 
 
+def cmd_backtest(args: argparse.Namespace) -> int:
+    cfg = load_config()
+    rates = load_base_rates()
+    cases_file = Path(args.cases)
+    cases = load_cases(cases_file)
+    gen = base_llm() if args.llm in (None, "base") else make_llm_client("research", args.llm)
+    crit_spec = args.critic_llm or args.llm
+    crit = base_llm() if crit_spec in (None, "base") else make_llm_client("critic", crit_spec)
+    embedder = make_embedder(args.embedder)
+    print(f"backtest: {len(cases)} cases  generator {gen.provider}:{gen.model}  "
+          f"critic {crit.provider}:{crit.model}  embedder {embedder.name}")
+    run = run_backtest(cases, cfg=cfg, rates=rates, embedder=embedder, generator=gen,
+                       critic=crit, store=SQLiteStore(), cases_file=cases_file,
+                       out_dir=Path(args.out) if args.out else None)
+    m = run.metrics
+    for name, ok in m.checks().items():
+        print(f"  [{'n/a' if ok is None else ('PASS' if ok else 'FAIL')}] {name}")
+    print(f"  Brier {m.brier if m.brier is None else round(m.brier, 4)} (base rates only "
+          f"{m.brier_baseline if m.brier_baseline is None else round(m.brier_baseline, 4)}), "
+          f"groundedness {m.groundedness:.2%}, breaches {len(m.breaches)}, "
+          f"leaks {len(run.leaks)}, latency max {m.latency_max_s:.2f}s")
+    print(f"  decisions: {m.decisions}")
+    print(f"report: {run.report}")
+    return 0 if not run.leaks and not m.breaches else 1
+
+
 def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    bt = sub.add_parser("backtest", help="point-in-time backtest + metrics report")
+    bt.add_argument("--cases", default=str(FIXTURE), help="backtest cases YAML")
+    bt.add_argument("--llm", help="generator spec, or 'base' = base rates only (default)")
+    bt.add_argument("--critic-llm", help="critic spec (default: same as --llm)")
+    bt.add_argument("--embedder", help="embedder spec (default: BIOTRADEAI_EMBEDDER/bge-small)")
+    bt.add_argument("--out", help="report folder (default: reports/)")
+    bt.set_defaults(fn=cmd_backtest)
     sr = sub.add_parser("sell-replay", help="replay sell-machine event fixtures")
     sr.add_argument("--fixture", default=str(Path("data/fixtures/sell")),
                     help="a replay YAML or a folder of them")

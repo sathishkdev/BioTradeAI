@@ -236,6 +236,17 @@ class LevelTrace:
                 "reply": (self.reply or "")[:4000], "notes": self.notes}
 
 
+BASE_RATE = "base rate"
+REBALANCED = "base rate (moved only by rebalancing so siblings sum to 1)"
+REJECTED = "critic rejected: "
+
+
+def is_llm_adjusted(n: ToTNode) -> bool:
+    """True when the probability moved because the LLM proposed it (and it still stands).
+    Moves caused only by code rebalancing, or by a rejected proposal, are not claims."""
+    return abs(n.adjustment) > 1e-12 and not n.justification.startswith((BASE_RATE, REJECTED))
+
+
 def _make_nodes(cands: list[Candidate], adj: dict[str, float], just: dict[str, str],
                 evid: dict[str, list[str]], max_adjustment: float) -> list[ToTNode]:
     """Project each sibling group so it sums to 1 within the allowed band."""
@@ -251,7 +262,8 @@ def _make_nodes(cands: list[Candidate], adj: dict[str, float], just: dict[str, s
                 node_id=c.node_id, parent_id=c.parent_id, depth=c.depth, label=c.label,
                 base_rate=c.base_rate, adjustment=max(-1.0, min(1.0, p - c.base_rate)),
                 probability=p, step_return=c.step_return,
-                justification=just.get(c.node_id, "base rate"),
+                justification=just.get(c.node_id, BASE_RATE if abs(p - c.base_rate) < 1e-12
+                                       else REBALANCED),
                 evidence_ids=evid.get(c.node_id, [])))
     return out
 
@@ -327,7 +339,7 @@ def critique_level(llm: LLMClient, state: CatalystState, inputs: ResearchInputs,
                    cfg: GuardrailsConfig) -> tuple[list[ToTNode], LevelTrace]:
     """Critic step for the ``draft`` nodes produced by ``generate_level`` at ``depth``."""
     d = cfg.tot.max_prob_adjustment
-    adjusted = [n for n in draft if abs(n.adjustment) > 1e-12]
+    adjusted = [n for n in draft if is_llm_adjusted(n)]
     catalog = {e.sha256: e for e in evidence_catalog(inputs)}
     trace = LevelTrace("critic", depth, f"{llm.provider}:{llm.model}", "", None)
 
@@ -371,14 +383,17 @@ def critique_level(llm: LLMClient, state: CatalystState, inputs: ResearchInputs,
         groups.setdefault(n.parent_id, []).append(n)
     out: list[ToTNode] = []
     for group in groups.values():
-        proposed = [0.0 if n.node_id in rejected else n.adjustment for n in group]
+        proposed = [n.adjustment if is_llm_adjusted(n) and n.node_id not in rejected
+                    else 0.0 for n in group]
         probs = tot.bounded_projection([n.base_rate for n in group], proposed, d)
         for n, p in zip(group, probs, strict=True):
             upd: dict[str, Any] = {"probability": p,
                                    "adjustment": max(-1.0, min(1.0, p - n.base_rate))}
             if n.node_id in rejected:
-                upd["justification"] = f"critic rejected: {rejected[n.node_id]}"[:500]
+                upd["justification"] = f"{REJECTED}{rejected[n.node_id]}"[:500]
                 upd["evidence_ids"] = []
+            elif not is_llm_adjusted(n):
+                upd["justification"] = BASE_RATE if abs(p - n.base_rate) < 1e-12 else REBALANCED
             out.append(_with(n, **upd))
     trace.notes += [f"rejected {k}: {v}" for k, v in sorted(rejected.items())]
 

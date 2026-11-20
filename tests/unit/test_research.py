@@ -178,6 +178,26 @@ def _draft(cfg: GuardrailsConfig, rates: BaseRates, fx: ScenarioFixture,
     return _gen(cfg, rates, fx, reply, inputs)[0]
 
 
+def test_rebalancing_side_effects_are_not_treated_as_llm_claims(
+        cfg: GuardrailsConfig, rates: BaseRates, onco: ScenarioFixture) -> None:
+    """pdufa: failure base 0.094 cannot drop by 0.15, so code moves 'partial' to rebalance.
+    That move is arithmetic, not a claim: it must not be 'rejected' or need evidence."""
+    cat = onco.catalyst.model_copy(update={"catalyst_event": "pdufa"})
+    reply = {"adjustments": [
+        {"node": "success", "adjustment": 0.15, "justification": "j", "evidence": ["E1"]},
+        {"node": "failure", "adjustment": -0.15, "justification": "j", "evidence": ["E1"]}]}
+    draft, _ = research.generate_level(_llm(reply), cat, onco.inputs, 1, cfg=cfg, rates=rates)
+    partial = _by(draft)["partial"]
+    assert abs(partial.adjustment) > 0 and not research.is_llm_adjusted(partial)
+    assert partial.justification == research.REBALANCED
+    critic = _llm({"reviews": [{"node": "success", "verdict": "accept", "reason": "ok"},
+                               {"node": "failure", "verdict": "accept", "reason": "ok"}]})
+    nodes, _ = research.critique_level(critic, cat, onco.inputs, 1, draft, cfg=cfg)
+    assert "partial" not in critic.calls[0][-1].content
+    assert not _by(nodes)["partial"].justification.startswith(research.REJECTED)
+    assert sum(n.probability for n in nodes) == pytest.approx(1.0)
+
+
 def test_unevidenced_adjustment_rejected_without_asking_llm(
         cfg: GuardrailsConfig, rates: BaseRates, onco: ScenarioFixture) -> None:
     critic = _llm({"reviews": [{"node": "success", "verdict": "accept", "reason": "ok"}]})
