@@ -2,7 +2,7 @@
 # names: current pipeline code, generic (INN) and brand names.
 # previous_codes: older pipeline codes after a rename (so old risk factors still match).
 # LLM suggestions land in data/synonym_proposals.yaml; approve with:
-#   python -m biotradeai ontology approve <index>
+#   python -m biotradeai ontology approve --index <n>
 #
 # Example:
 # entities:

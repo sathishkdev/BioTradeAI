@@ -97,7 +97,7 @@ def cmd_ontology(args: argparse.Namespace) -> int:
     elif args.action == "propose":
         propose(args.name, args.entity, ticker=args.ticker.upper(), kind=args.kind,
                 rationale=args.rationale or "", source=f"human:{getpass.getuser()}")
-        print("proposal queued; approve with: python -m biotradeai ontology approve <index>")
+        print("proposal queued; approve with: python -m biotradeai ontology approve --index <n>")
     elif args.action == "approve":
         e = approve_proposal(args.index, approver=getpass.getuser())
         print(f"approved -> {e.entity_id}: {', '.join(e.all_names)}")
