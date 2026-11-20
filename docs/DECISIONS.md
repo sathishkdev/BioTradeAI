@@ -562,3 +562,18 @@ The user asked for both after the watchlist review.
 * **Fix:** market cap used (bid + ask) / 2 even when one side was 0 after hours, which
   halved it (Immunocore showed ~$564M). The midpoint is now used only when both sides
   are quoted; otherwise the quoted side is used.
+
+## D-069 — First sync reads catalyst dates; outcomes need a nearby event window (2026-11-20)
+* **Found on the first real follow run (Apnimed):** the PDUFA date was in an 8-K filed
+  before approval. The first sync loaded that 8-K into RAG but extracted no event,
+  because only new filings were read for signals.
+* **Now:** the first sync replays its historical 8-Ks oldest-first, extracting
+  **catalyst dates only**. A later filing's date supersedes an earlier one, which is
+  kept in `previous_dates`. Old outcomes, deals and clinical holds are not applied
+  retroactively: they were part of what the human saw when approving.
+* **`watchlist resync <id>`** clears the first-sync marker. Already-ingested documents
+  are skipped by fingerprint.
+* **Guard against passing mentions:** press releases often mention old events
+  ("following the CRL received in 2025, ..."). `record_outcome` closes an event only if
+  the outcome's filing date is no more than 45 days before the event's window start
+  (`OUTCOME_LEAD_DAYS`). Earlier mentions are about something else.

@@ -50,6 +50,8 @@ class SyncReport:
     added: dict[str, int] = field(default_factory=dict)
     skipped: int = 0
     errors: list[str] = field(default_factory=list)
+    # historical 8-Ks read during the first sync: (filed, archive path, text)
+    eight_ks: list[tuple[date, str, str]] = field(default_factory=list)
 
     def bump(self, source: str) -> None:
         self.added[source] = self.added.get(source, 0) + 1
@@ -93,6 +95,7 @@ class DocumentSync:
         doc = Document(ticker=e.ticker, tier=SourceTier.SEC, published_at=_at(filed), url=url,
                        title=f"{e.company} 8-K {filed}", text=text, doc_type="8-K")
         self.add(e, doc, "sec-8k", rep)
+        rep.eight_ks.append((filed, path, text))
         return text
 
     def sec_periodic(self, e: WatchEntry, f: Filing, rep: SyncReport) -> None:

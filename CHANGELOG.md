@@ -54,8 +54,21 @@ owner's account.
 - Docs: README with architecture diagrams, step-by-step `docs/SETUP.md`, decisions log.
 - CI: ruff, strict mypy and offline pytest on Linux and Windows.
 
-### Added later
+### Added later (same version, before tagging)
 - MIT license.
+- Scout quality fixes from live runs:
+  - drop profitable companies, companies without runway data, and drugs already
+    FDA-approved (openFDA);
+  - market-cap ceiling of $5B;
+  - licensing detection;
+  - cleaner drug names, and boilerplate skipped.
+- Nine code-review fixes, including: retry SEC index days that aren't published yet;
+  readouts early in their window still reach the sell rules; one failed fetch no
+  longer aborts a run.
+- The first sync after approval extracts catalyst dates from older 8-Ks.
+  `watchlist resync <id>` re-runs it.
+- An outcome mentioned in passing (e.g. an old CRL) can't close a future event: an
+  outcome must be filed within 45 days of the event's window.
 
 ### Not yet
 - Phases 3, 9 and 10 (Robinhood spike, shadow mode, live pilot).

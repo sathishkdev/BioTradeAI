@@ -227,6 +227,17 @@ def cmd_follow(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_resync(args: argparse.Namespace) -> int:
+    """Re-run the first sync on the next `follow` (documents are never duplicated)."""
+    e = Watchlist().get(args.id)
+    store = SQLiteStore()
+    store.kv_set(f"sync.initial.{e.entity_id}", "")  # empty = not done
+    store.append_audit("watchlist.resync", {"id": e.id}, ticker=e.ticker)
+    print(f"{e.id}: first sync will run again on the next `biotradeai watchlist follow` "
+          "(already-loaded documents are skipped)")
+    return 0
+
+
 def cmd_events(args: argparse.Namespace) -> int:
     store = SQLiteStore()
     wl = Watchlist()
@@ -276,6 +287,9 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     fo.add_argument("--spread-minutes", type=float, default=0.0)
     fo.add_argument("--embedder")
     fo.set_defaults(fn=cmd_follow)
+    rs = ws.add_parser("resync", help="re-run the first sync for an approved pair")
+    rs.add_argument("id")
+    rs.set_defaults(fn=cmd_resync)
     ev = ws.add_parser("events", help="agent-managed catalyst events")
     ev.add_argument("id", nargs="?")
     ev.set_defaults(fn=cmd_events)

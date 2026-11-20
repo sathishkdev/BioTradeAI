@@ -435,6 +435,7 @@ python -m biotradeai watchlist show ABCD:ABC-123     # the approval card
 python -m biotradeai watchlist approve ABCD:ABC-123  # reject | retire --reason "..."
 python -m biotradeai watchlist follow                # daily: filings, trials, events, life cycle
 python -m biotradeai watchlist events                # agent-managed catalyst dates
+python -m biotradeai watchlist resync ABCD:ABC-123   # re-run first sync (no duplicates)
 ```
 
 **Trading (Alpaca paper)**

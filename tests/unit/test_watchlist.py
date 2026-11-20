@@ -155,7 +155,9 @@ def test_event_life(tmp_path: Path, store: SQLiteStore) -> None:
                filed=TODAY + timedelta(days=2)).kind == "changed"  # newer source settles it
     assert rec(_m(date(2026, 1, 1), date(2026, 1, 1), Precision.DAY)).kind == "stale"
     assert record_outcome(store, e, OutcomeKind.CRL, url="u4", sentence="CRL",
-                          filed=TODAY) == "PDUFA"
+                          filed=TODAY) is None  # months early: about something else
+    assert record_outcome(store, e, OutcomeKind.CRL, url="u4", sentence="CRL",
+                          filed=d2) == "PDUFA"
     assert rec(_m(d2, d2, Precision.DAY), filed=TODAY + timedelta(days=9)).kind == "new"
 
 
@@ -185,7 +187,7 @@ def test_agent_catalysts_and_outcomes(tmp_path: Path, store: SQLiteStore) -> Non
         ("ONCO", "ONC-101", "PDUFA", d)]
     wl.pause(e.id, reason="test")
     assert agent_catalysts(store, wl, TODAY) == []  # paused: no new buys
-    record_outcome(store, e, OutcomeKind.CRL, url="u2", sentence="s", filed=TODAY)
+    record_outcome(store, e, OutcomeKind.CRL, url="u2", sentence="s", filed=d)
     assert [o.result.value for o in agent_outcomes(store, wl)] == ["crl"]  # sells still see it
 
 
@@ -238,6 +240,8 @@ class Mock:
         self.facts = json.loads((REPO_ROOT / "data" / "fixtures" / "edgar" / "companyfacts" /
                                  "ONCO.json").read_text(encoding="utf-8"))
         self.paths: list[str] = []
+        self.recent: dict[str, list[str]] = {k: [] for k in (
+            "accessionNumber", "form", "filingDate", "reportDate", "primaryDocument")}
 
     COMPANIES: ClassVar[dict[str, tuple[str, str, str]]] = {
         CIK: ("Onco Example Therapeutics, Inc.", "2836", "ONCO"),
@@ -247,8 +251,9 @@ class Mock:
         name, sic, ticker = self.COMPANIES.get(cik, ("Car Co", "3711", "CARX"))
         return {"cik": cik, "name": name, "sic": sic, "sicDescription": "",
                 "tickers": [ticker], "exchanges": ["Nasdaq"],
-                "filings": {"recent": {k: [] for k in ("accessionNumber", "form", "filingDate",
-                                                        "reportDate", "primaryDocument")}}}
+                "filings": {"recent": self.recent if cik == CIK else {
+                    k: [] for k in ("accessionNumber", "form", "filingDate", "reportDate",
+                                    "primaryDocument")}}}
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
         p = req.url.path
@@ -385,18 +390,18 @@ def test_follow_records_events_outcomes_and_launch(tmp_path: Path, store: SQLite
     assert any("PDUFA new" in x for x in rep.events)
     assert rep.docs.get("sec-8k") == 1 and rep.docs.get("ctgov") == 1
     assert agent_catalysts(store, wl, TODAY)[0].date == date(2027, 4, 2)
-    # approval, then launch, in later filings
-    _filing(mock, "8-K", "<p>The FDA approved ONC-101 (Oncora) for adults.</p>", "20261123")
+    # approval at the PDUFA date, then launch, in later filings
+    _filing(mock, "8-K", "<p>The FDA approved ONC-101 (Oncora) for adults.</p>", "20270402")
     _filing(mock, "8-K", "<p>ONC-101 is now commercially available in the United States."
-                         "</p>", "20261124")
-    rep = _follower(mock, store, wl, cfg, today=date(2026, 11, 24)).run()
+                         "</p>", "20270405")
+    rep = _follower(mock, store, wl, cfg, today=date(2027, 4, 5)).run()
     e = wl.get(e.id)
-    assert e.stage is Stage.LAUNCHED and e.launched_on == date(2026, 11, 24)
-    assert e.review_after == date(2027, 3, 31)
-    assert agent_catalysts(store, wl, date(2026, 11, 24)) == []  # PDUFA occurred
+    assert e.stage is Stage.LAUNCHED and e.launched_on == date(2027, 4, 5)
+    assert e.review_after == date(2027, 9, 30)
+    assert store.get_event(e.entity_id, "PDUFA")["status"] == "occurred"  # type: ignore[index]
     # 10-Q filed after the first full quarter post-launch -> pause for re-approval
-    _filing(mock, "10-Q", "<p>quarterly report</p>", "20270512")
-    rep = _follower(mock, store, wl, cfg, today=date(2027, 5, 12)).run()
+    _filing(mock, "10-Q", "<p>quarterly report</p>", "20271110")
+    rep = _follower(mock, store, wl, cfg, today=date(2027, 11, 10)).run()
     assert wl.get(e.id).status is Status.PAUSED
     assert "first full quarter after launch" in (wl.get(e.id).pause_reason or "")
 
@@ -609,3 +614,51 @@ def test_clean_names_drops_doses_and_formulations() -> None:
     assert clean_names(["4D-150 IVT", "3E10 vg/eye"]) == ["4D-150"]
     assert clean_names(["zodasiran Injection"]) == ["zodasiran"]
     assert clean_names(["PCV21 vaccine", "515"]) == ["PCV21 vaccine"]
+
+
+
+def test_first_sync_extracts_catalysts_from_historical_8ks(
+        tmp_path: Path, store: SQLiteStore, cfg: GuardrailsConfig) -> None:
+    """The live gap: Apnimed's PDUFA date sat in an 8-K filed before approval."""
+    mock = Mock()
+    rows = [("0009000001-26-000050", "8-K", "2026-09-10", "PDUFA date of January 30, 2027"),
+            ("0009000001-26-000077", "8-K", "2026-11-02", "PDUFA date of March 30, 2027")]
+    for acc, form, filed, phrase in rows:
+        for k, v in (("accessionNumber", acc), ("form", form), ("filingDate", filed),
+                     ("reportDate", ""), ("primaryDocument", "x.htm")):
+            mock.recent[k].insert(0, v)  # SEC lists newest first
+        mock.archive[f"/Archives/edgar/data/9000001/{acc}.txt"] = (
+            f"<p>The FDA assigned ONC-101 a {phrase}.</p>"
+            "<p>The trial previously met its primary endpoint.</p>")
+    wl, e = _approved(tmp_path)
+    rep = _follower(mock, store, wl, cfg).run()
+    ev = store.get_event(e.entity_id, "PDUFA")
+    assert ev is not None and ev["date"] == "2027-03-30"  # newest filing wins
+    assert json.loads(ev["previous_dates"])[0]["date"] == "2027-01-30"
+    assert ev["status"] == "upcoming"  # old outcomes don't close anything
+    assert any("PDUFA" in x for x in rep.events)
+    assert wl.get(e.id).status is Status.APPROVED
+
+
+def test_background_mention_of_old_crl_does_not_close_future_pdufa(
+        tmp_path: Path, store: SQLiteStore, cfg: GuardrailsConfig) -> None:
+    mock = Mock()
+    wl, e = _approved(tmp_path)
+    _filing(mock, "8-K", "<p>Following the complete response letter the Company received for "
+                         "ONC-101 in 2025, the FDA set a PDUFA target action date of June 30, "
+                         "2027 for ONC-101.</p>")
+    _follower(mock, store, wl, cfg).run()
+    ev = store.get_event(e.entity_id, "PDUFA")
+    assert ev is not None and ev["status"] == "upcoming" and ev["date"] == "2027-06-30"
+
+
+def test_resync_reruns_first_sync_without_duplicates(
+        tmp_path: Path, store: SQLiteStore, cfg: GuardrailsConfig) -> None:
+    mock = Mock()
+    wl, e = _approved(tmp_path)
+    first = _follower(mock, store, wl, cfg).run()
+    assert first.docs.get("ctgov") == 1
+    store.kv_set(f"sync.initial.{e.entity_id}", "")  # what `watchlist resync` does
+    again = _follower(mock, store, wl, cfg).run()
+    assert again.docs.get("ctgov") is None  # same document: skipped, not duplicated
+    assert store.kv_get(f"sync.initial.{e.entity_id}")  # marked done again

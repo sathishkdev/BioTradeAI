@@ -105,8 +105,15 @@ class Follower:
         r = SyncReport(f.accession)
         text = self.sync.sec_8k(entries[0], path=f.path, filed=f.filed, rep=r)
         rep.add_docs(r)
-        if not text:
-            return
+        if text:
+            self.read_8k(entries, f, text, rep)
+
+    def read_8k(self, entries: list[WatchEntry], f: IndexEntry, text: str,
+                rep: FollowReport, *, history: bool = False) -> None:
+        """Apply one 8-K's signals. ``history=True`` (filings from before the approval,
+        read by the first sync) records catalyst DATES only: old outcomes, deals and holds
+        were part of what the human saw when approving, so they don't pause or close
+        anything retroactively."""
         all_drugs = drug_mentions(text)
         for e in entries:
             if e.status is not Status.APPROVED:
@@ -124,6 +131,8 @@ class Follower:
                         self.store.append_audit(f"event.{ch.kind}", {
                             "id": e.id, "event": ch.event_type, "detail": ch.detail,
                             "source": f.url, "sentence": m.sentence[:400]}, ticker=e.ticker)
+            if history:
+                continue
             for o in find_outcomes(text):
                 if not (mentions_any(o.drugs, names) or (single and not o.drugs)):
                     continue
@@ -176,9 +185,14 @@ class Follower:
         # 1. initial sync for newly approved drugs
         for e in approved:
             key = f"sync.initial.{e.entity_id}"
-            if self.store.kv_get(key) is None:
+            if not self.store.kv_get(key):  # None or '' (resync requested)
                 r = self.sync.initial(e, today=self.today)
                 rep.add_docs(r)
+                # Catalyst dates from the 8-Ks just loaded, oldest first, so a later
+                # filing's date supersedes an earlier one (and stays in previous_dates).
+                for filed, path, text in sorted(r.eight_ks, key=lambda x: x[0]):
+                    hist = IndexEntry("8-K", e.company, e.cik, filed, path)
+                    self.read_8k([e], hist, text, rep, history=True)
                 if not r.errors:  # retried next run otherwise (already-added docs dedupe)
                     self.store.kv_set(key, self.today.isoformat())
 

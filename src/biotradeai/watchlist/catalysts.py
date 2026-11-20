@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 from biotradeai.data.catalysts import Catalyst
@@ -25,6 +25,8 @@ from biotradeai.events import ReadoutResult
 from biotradeai.store.sqlite_store import SQLiteStore
 from biotradeai.watchlist.model import Status, WatchEntry, Watchlist
 
+# An outcome filed earlier than this before an event's window is about something else.
+OUTCOME_LEAD_DAYS = 45
 SUPPORTED = frozenset({"PHASE3_READOUT", "PDUFA"})
 TRADABLE_PRECISION = frozenset({Precision.DAY, Precision.MONTH, Precision.QUARTER})
 
@@ -132,10 +134,18 @@ _OUTCOME_EVENT = {
 def record_outcome(
     store: SQLiteStore, e: WatchEntry, kind: OutcomeKind, *, url: str, sentence: str, filed: date
 ) -> str | None:
-    """Mark the matching upcoming event as occurred. Returns its event type, if any."""
+    """Mark the matching upcoming event as occurred. Returns its event type, if any.
+
+    Guard: press releases often mention OLD events in passing ("following the CRL
+    received in March..."). An outcome can only close an event if its filing is dated no
+    more than ``OUTCOME_LEAD_DAYS`` before that event's expected window.
+    """
     for etype in _OUTCOME_EVENT.get(kind, ()):
         for ev in store.list_events(entity_id=e.entity_id):
             if ev["event_type"] == etype and ev["status"] != EventStatus.OCCURRED:
+                start = date.fromisoformat(ev["window_start"] or ev["date"] or ev["window_end"])
+                if filed < start - timedelta(days=OUTCOME_LEAD_DAYS):
+                    continue  # too early to be THIS event's outcome
                 store.put_event(
                     {
                         **ev,
