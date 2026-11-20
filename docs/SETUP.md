@@ -16,8 +16,8 @@ Windows PowerShell; Linux/macOS equivalents are noted where they differ.
 5. [Create accounts and keys](#5-create-accounts-and-keys)
 6. [Fill in `.env`](#6-fill-in-env)
 7. [Verify each live connection](#7-verify-each-live-connection)
-8. [Add your tickers and drugs](#8-add-your-tickers-and-drugs)
-9. [Load documents into the knowledge base](#9-load-documents-into-the-knowledge-base)
+8. [Build your watchlist (scout + your approval)](#8-build-your-watchlist-scout--your-approval)
+9. [Let the agent collect documents and events](#9-let-the-agent-collect-documents-and-events)
 10. [Dry run, then your first paper cycle](#10-dry-run-then-your-first-paper-cycle)
 11. [Schedule the daily run](#11-schedule-the-daily-run)
 12. [Daily routine](#12-daily-routine)
@@ -235,70 +235,104 @@ pytest -m integration
 Runs the live, read-only probes (SEC, CT.gov, Alpaca paper account, local Ollama). None place
 orders.
 
-## 8. Add your tickers and drugs
+## 8. Build your watchlist (scout + your approval)
 
-**a) Catalysts** — `data\catalysts.csv` is the source of truth for event dates (5–10 rows):
+The agent finds candidates itself. You only approve or reject company+drug pairs.
 
-```csv
-ticker,drug,event,date,source_url
-ABCD,ABC-123,PHASE3_READOUT,2027-03-15,https://investors.example.com/press-release
-WXYZ,wexitinib,PDUFA,2027-02-01,https://investors.example.com/pdufa
-```
-
-- `event`: `PHASE3_READOUT` or `PDUFA` are evaluated (others are listed but skipped,
-  since there are no base rates for them yet).
-- `date`: from the company's 8-K or press release, not from CT.gov (CT.gov dates are
-  sponsor estimates).
+**a) Run the scout** (weekly is enough):
 
 ```powershell
-python -m biotradeai catalysts
+python -m biotradeai watchlist scout
 ```
 
-**b) Drug names** — `data\synonyms.yaml` maps every name of a drug to one ID. Add every
-pipeline code, generic name, brand name and old code:
+It reads the SEC daily filing index for 8-Ks from listed biotech companies, and
+ClinicalTrials.gov for industry Phase 3 trials finishing in 3–12 months. It matches
+trial sponsors to listed companies, drops anything with under 6 months of runway or
+already decided, ranks what is left, and proposes up to 10 pairs. Add `--with-quotes` to
+include spread and market cap from Alpaca. On the first run, the SEC index scan builds a
+company cache, which takes a few minutes at our polite 5 requests/second.
 
-```yaml
-entities:
-  ENT-ABCD-ABC123:
-    ticker: ABCD
-    names: [ABC-123, abcinib, Abcora]
-    previous_codes: [XY-77]
+**b) Review each proposal's card and decide:**
+
+```powershell
+python -m biotradeai watchlist list
 ```
 
 ```powershell
-python -m biotradeai ontology resolve abcinib
+python -m biotradeai watchlist show ABCD:ABC-123
 ```
 
-**c) Base rates** — review `data\base_rates.yaml`. The headline rates are cited from
+The card shows:
+* the company, how it was matched, cash runway, and market data;
+* the drug's names, trials, endpoints and enrollment;
+* each catalyst with the **exact sentence and SEC link** it came from;
+* red flags (going concern, shelf offerings, no runway data), concentration, and
+  whether the event type is tradable.
+
+```powershell
+python -m biotradeai watchlist approve ABCD:ABC-123 --note "clean Phase 2, 18 mo cash"
+```
+
+```powershell
+python -m biotradeai watchlist reject WXYZ:WX-9 --reason "big pharma, readout won't move it"
+```
+
+Approving adds the drug's names to `data\synonyms.yaml` (refused if a name already
+belongs to another drug). From then on the agent follows the drug through every phase
+until it reaches the market. You are asked again only when:
+* something material happens: acquisition or merger, licensing, a clinical hold, a
+  terminated trial, delisting;
+* the yearly check-in comes round;
+* the first full quarter after launch has been reported.
+
+A rejected pair is not proposed again unless something material changes, such as a
+new catalyst type.
+
+**c) Manual entries still work.** For a catalyst the scout didn't find, add a row to
+`data\catalysts.csv` (`ticker,drug,event,date,source_url`; events `PHASE3_READOUT` or
+`PDUFA`) and the drug's names to `data\synonyms.yaml`. Paper runs use both sources.
+
+**d) Base rates** — review `data\base_rates.yaml`. The headline rates are cited from
 BIO/Informa/QLS 2021; the "partial" splits and every return figure are assumptions.
 When you have checked them, set `reviewed: true`.
 
-**d) Placeholders** in `config\guardrails.yaml` to set deliberately:
+**e) Placeholders** in `config\guardrails.yaml` to set deliberately:
 `tot.residual_scenario_return` (−0.70) and `sell.trailing_stop_pct` (0.10).
 
-## 9. Load documents into the knowledge base
-
-For each drug, save its sources as PDF, HTML or TXT and ingest them with the right tier
-and published date:
-
-| Tier | Source | Where |
-|---|---|---|
-| 1 | ClinicalTrials.gov record, FDA briefing docs | clinicaltrials.gov (save page as HTML), fda.gov |
-| 2 | 10-K / 10-Q (Item 1A Risk Factors), 8-K | sec.gov EDGAR filing index |
-| 3 | PubMed abstracts, press releases | pubmed.ncbi.nlm.nih.gov, company IR site |
+## 9. Let the agent collect documents and events
 
 ```powershell
-python -m biotradeai rag ingest C:\docs\abcd-10k.htm --ticker ABCD --tier 2 --date 2026-03-01 --url https://www.sec.gov/... --drug ABC-123
+python -m biotradeai watchlist follow
 ```
 
-Check what the system would see (point-in-time with `--as-of`):
+**The first run after you approve a drug** loads:
+* the latest 10-K and 10-Q risk factors;
+* 180 days of 8-Ks, with their press-release exhibits;
+* the drug's ClinicalTrials.gov records, including posted results;
+* recent PubMed abstracts.
+
+Every document keeps its real publication date.
+
+**After that, each daily run reads only new filings** for followed companies (from the
+SEC daily index) and:
+* updates catalyst dates (`watchlist events`), keeping every earlier date;
+* records outcomes, FDA approval and launch;
+* pauses the pair on material changes;
+* refreshes each drug's PubMed abstracts about once a week.
+
+```powershell
+python -m biotradeai watchlist events
+```
 
 ```powershell
 python -m biotradeai rag query ABCD ABC-123 "liver safety signals?"
 ```
 
-Aim for at least two relevant Tier-1/Tier-2 documents per drug. With fewer, confidence
-stays below 0.70 and the ticker is routed to you as INCONCLUSIVE, which is by design.
+Catalyst dates come only from company filings, with the source sentence kept;
+ClinicalTrials.gov estimates are never used. Two filings on the same day that disagree
+mark the event as *conflicting*, and it isn't traded until a newer filing settles it.
+FDA briefing PDFs and company websites aren't fetched automatically. If you have one,
+add it with `rag ingest <file> --ticker ... --tier 1 --date ... --url ... --drug ...`.
 
 ## 10. Dry run, then your first paper cycle
 
@@ -319,33 +353,41 @@ risk check. Type `approve` to send it to Alpaca paper; anything else rejects it.
 
 ## 11. Schedule the daily run
 
-Run one cycle each trading day, e.g. 30 minutes after the open (10:00 New York time).
-Because each order needs typed approval, run it in a terminal you watch, or schedule the
-dry run and approve manually.
+Suggested schedule (local times; adjust the paths):
 
-Windows Task Scheduler (dry run each weekday at 10:00 local time; adjust the paths):
+| Job | When | Why |
+|---|---|---|
+| `watchlist scout --spread-minutes 120` | Sunday night | weekly proposals, spread over 2 hours |
+| `watchlist follow --spread-minutes 60` | weekdays ~6:00 | new filings from the previous day |
+| `paper run` | weekdays ~10:00 | needs you at the keyboard to approve orders |
 
 ```powershell
-schtasks /Create /TN "BioTradeAI paper dry run" /SC WEEKLY /D MON,TUE,WED,THU,FRI /ST 10:00 /TR "C:\path\to\BioTradeAI\.venv\Scripts\python.exe -m biotradeai paper run --auto-reject"
+schtasks /Create /TN "BioTradeAI scout" /SC WEEKLY /D SUN /ST 22:00 /TR "C:\path\to\BioTradeAI\.venv\Scripts\python.exe -m biotradeai watchlist scout --spread-minutes 120"
 ```
 
-Linux cron (same idea): `0 10 * * 1-5 cd /path/BioTradeAI && .venv/bin/python -m biotradeai paper run --auto-reject`.
+```powershell
+schtasks /Create /TN "BioTradeAI follow" /SC WEEKLY /D MON,TUE,WED,THU,FRI /ST 06:00 /TR "C:\path\to\BioTradeAI\.venv\Scripts\python.exe -m biotradeai watchlist follow --spread-minutes 60"
+```
+
+Because each order needs typed approval, run `paper run` in a terminal you watch, or
+schedule the dry run (`paper run --auto-reject`) and approve manually.
+
+Linux cron (same idea):
+`0 22 * * 0 cd /path/BioTradeAI && .venv/bin/python -m biotradeai watchlist scout --spread-minutes 120`.
 
 ## 12. Daily routine
 
-1. `python -m biotradeai paper run` and approve or reject each prompt.
+1. `python -m biotradeai paper run` and approve or reject each prompt. It evaluates
+   catalysts for **approved** watchlist drugs plus any rows in `catalysts.csv`.
 2. `python -m biotradeai paper review`: decisions, orders, exits, skips, breaches, and
    an audit-chain check (must say `OK`).
-3. Enter any readout results in `data\outcomes.csv` the same day:
-
-   ```csv
-   ticker,drug,date,result,source_url
-   ABCD,ABC-123,2027-03-15,positive,https://investors.example.com/topline
-   ```
-
-   `result` is one of `positive | negative | crl | mixed`. The next cycle uses it to
-   scale out (positive) or exit fully (the rest).
-4. Weekly: `python -m biotradeai paper gate` shows paper days and breaches toward the
+3. `python -m biotradeai watchlist list --status paused`: anything waiting for you.
+   Re-approve it with `watchlist approve <id>` or end it with
+   `watchlist retire <id> --reason ...`.
+4. Readout results are read from 8-Ks automatically. If the company announced one
+   only on its website, add it to `data\outcomes.csv`
+   (`ticker,drug,date,result,source_url`; result `positive | negative | crl | mixed`).
+5. Weekly: `watchlist show` on new proposals, and `paper gate` for progress toward the
    90-day live gate.
 
 If anything looks wrong: `python -m biotradeai killswitch trip` stops everything and

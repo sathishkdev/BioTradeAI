@@ -450,3 +450,74 @@ investor-relations sites, press-release wires and news sites, search engines, pa
 catalyst calendars, and anything behind a login or paywall. PubMed abstracts are kept
 only in the local knowledge base and never committed. Optional free keys
 (`NCBI_EMAIL`, `NCBI_API_KEY`, `OPENFDA_API_KEY`) go in `.env` only.
+
+## D-062 — Watchlist: the agent scouts, the human approves company+drug pairs (2026-11-20)
+Agreed with the user. A scout (`watchlist scout`) proposes pairs with an evidence card.
+Only a human approves (`watchlist approve`), and approving writes the drug's names
+into `synonyms.yaml` (refused on a name collision). One entry per (SEC company ID, drug
+entity), stored in `data/watchlist.yaml` (git-ignored). Duplicates are suppressed. A
+rejected or retired pair returns only on a material change (currently: a catalyst type
+not on the previous card), and its earlier decision is shown.
+
+## D-063 — One approval covers the drug until one full quarter after launch (2026-11-20)
+The user chose drug-lifetime approval over per-catalyst approval. The entry pauses for
+re-approval on:
+* acquisition or merger;
+* licensing of the drug;
+* a clinical hold;
+* a terminated, withdrawn or suspended trial;
+* delisting (Form 25);
+* the yearly check-in;
+* FDA approval with no launch after ~6 months;
+* the first full calendar quarter after launch being reported (a 10-Q/10-K filed after
+  that quarter's end).
+It retires automatically only when the company says development is discontinued.
+Paused entries get no new buys; the sell machine still sees their outcomes. Fiscal
+quarters are approximated by calendar quarters.
+
+## D-064 — Agent-managed catalyst events replace human-curated dates for approved pairs (2026-11-20)
+This deviates from plan correction #3 (human-curated catalyst dates), at the user's
+request. Guardrails:
+* Dates come only from company filings, with the exact sentence and link stored.
+* ClinicalTrials.gov dates are never used as catalyst dates.
+* An event's identity is (drug, event type, trial), and its date is a field with
+  history.
+* The newest filing wins; a same-day disagreement marks the event `conflicting`, which
+  is not traded.
+* An event is tradable only if it is upcoming, a supported type (Phase 3 readout,
+  PDUFA), and has an exact day or a company-stated window of at most a quarter (the
+  window end is used as the date).
+* Every order still needs typed human approval.
+`catalysts.csv` and `outcomes.csv` remain for manual additions; paper runs merge both.
+
+## D-065 — Scout and follow-loop signal sources (2026-11-20)
+* SEC daily form index (`/Archives/edgar/daily-index/YYYY/QTRn/form.YYYYMMDD.idx`):
+  one file per business day instead of per-company polling.
+* Company records cached for 30 days. Biotech = industry codes 2834, 2836 or 8731, and
+  listed on Nasdaq, NYSE or NYSE American.
+* 8-Ks are read as the full submission `.txt`, because the catalyst sentence usually
+  lives in the press-release exhibit (EX-99.1).
+* ClinicalTrials.gov: Phase 3, industry-sponsored, primary completion 60–365 days out,
+  using `filter.advanced` (verified live). Sponsors are matched to SEC company names
+  (exact, or a unique partial match); the match type is shown on the card.
+* Ranking favours: two agreeing sources, an exact date, a PDUFA, runway ≥ 12 months,
+  and few Phase 3 trials (sponsors with more than 10 are penalised as diversified).
+  Red flags lower the score.
+* Soft cap of 30 approved+paused pairs, and at most 10 proposals per run.
+* Text signals (`data/signals.py`) are regex only, with hedged sentences ignored.
+  Their known weakness is drug naming: codes need two or more digits, and generic
+  names are guessed from common drug-name endings. That's why every card shows the
+  source sentence.
+
+## D-066 — Automatic document sync (2026-11-20)
+`rag/sync.py`, run from the follow loop:
+* On the first run after approval: the latest 10-K plus two 10-Qs (Item 1A), 180 days
+  of 8-Ks with exhibits, the drug's ClinicalTrials.gov records, and up to 10 PubMed
+  abstracts.
+* Daily after that: new filings from the index and the trial records.
+* PubMed on a weekly rolling slice.
+* Each (document, drug) pair is ingested once (`ingested_docs`), with the real
+  publication date.
+* ClinicalTrials.gov documents now include primary endpoints and any posted
+  primary-outcome results (title, time frame, p-value) — field names verified live.
+* FDA briefing PDFs and company websites stay manual (`rag ingest`), per D-061.

@@ -25,6 +25,7 @@ dates and Phase 3 readouts.
 ## Contents
 - [Architecture at a glance](#architecture-at-a-glance)
 - [The blocks, one by one](#the-blocks-one-by-one)
+- [Watchlist life cycle](#watchlist-life-cycle)
 - [Buy pipeline (Supervisor graph)](#buy-pipeline-supervisor-graph)
 - [Tree of Thoughts in detail](#tree-of-thoughts-in-detail)
 - [Sell state machine](#sell-state-machine)
@@ -42,7 +43,8 @@ dates and Phase 3 readouts.
 
 ```mermaid
 flowchart TB
-    YOU[/"YOU: catalysts.csv · outcomes.csv · synonyms.yaml · documents"/]
+    YOU[/"YOU: approve or reject watchlist proposals<br/>(optional manual catalysts.csv)"/]
+    SCOUT["⓪ Watchlist agent (no LLM)<br/>scout proposes · follow loop tracks approved drugs:<br/>filings, trials, catalyst dates, outcomes, life cycle"]
 
     subgraph INPUTS["① Data layer + ② Knowledge base (no LLM)"]
         direction LR
@@ -71,10 +73,12 @@ flowchart TB
     BROKER[("Alpaca paper<br/>(Robinhood last)")]
     AUDIT[("SQLite audit log<br/>append-only · hash-chained")]
 
-    YOU --> INPUTS
+    SCOUT -->|proposals + evidence cards| YOU
+    YOU -->|approved company+drug| SCOUT
+    SCOUT -->|documents, events| INPUTS
     INPUTS -->|evidence + runway| BUY
     RISK -->|BUY candidate| APPROVE
-    YOU -->|outcomes, new filings| SELL
+    SCOUT -->|outcomes, new filings| SELL
     SELL -->|exit order| APPROVE
     APPROVE --> SAFE
     EXEC -->|LIMIT orders only| BROKER
@@ -153,7 +157,49 @@ Triggers are listed in the [Sell state machine](#sell-state-machine) section bel
 | Paper runner | `paper/runner.py` | One cycle: exits first, then entries. Every order goes through approval and `execution.py`. A post-trade compliance check trips the kill-switch on any breach. |
 | Review and gate | `paper/review.py` | Daily audit summary. Counts paper days and breaches toward the 90-day live gate. |
 | Backtest | `backtest/` | Point-in-time harness with "leak" documents dated after the decision. Metrics: Brier, groundedness, independent breach check, escalation accuracy, latency. Writes reports to `reports/`. |
-| Store | `store/sqlite_store.py` | Holds the audit log (append-only triggers and a SHA-256 hash chain), positions, approval nonces, kill-switch state, sell-machine state and seen filings. |
+| Store | `store/sqlite_store.py` | Holds the audit log (append-only triggers and a SHA-256 hash chain), positions, approval nonces, kill-switch state, sell-machine state, seen filings, the request ledger, the SEC company cache, ingested-document fingerprints and catalyst events. |
+
+### 0 · Watchlist agent — `src/biotradeai/watchlist/`, `data/signals.py`, `data/secindex.py`, `rag/sync.py` (no LLM)
+
+| Block | File | What it does |
+|---|---|---|
+| SEC index + company cache | `data/secindex.py` | One SEC daily index file per business day lists every filing. Company records (industry code, tickers, exchange) are cached for 30 days. |
+| Text signals | `data/signals.py` | Deterministic extraction from filings: catalyst sentences with exact dates or windows, drug codes, endpoint met/missed, CRL, FDA approval, launch, discontinuation, acquisition and licensing. Hedged wording is ignored. |
+| Scout | `watchlist/scout.py` | Proposes company+drug pairs using two signals: 8-Ks from listed biotechs, and ClinicalTrials.gov Phase 3 trials finishing in 3–12 months (sponsor matched to a ticker). Filters on runway and spread, ranks, caps, and writes an evidence card. Never approves anything. |
+| Watchlist | `watchlist/model.py` | One entry per company+drug, stored in `data/watchlist.yaml`. Status goes proposed → approved / rejected → paused / retired. Duplicates and past rejections are suppressed. |
+| Catalyst events | `watchlist/catalysts.py` | Agent-managed events. The date is a field, earlier dates are kept, and the newest filing wins. A same-day disagreement marks the event *conflicting*, which isn't traded. Only events with an exact date or a window of a quarter or less are tradable. |
+| Document sync | `rag/sync.py` | Loads 10-K/10-Q risk factors, 8-Ks with exhibits, trial records including posted results, and PubMed abstracts, each with its real publication date and each only once. |
+| Follow loop | `watchlist/follow.py` | Daily, for approved drugs: new filings, trial status, outcomes, approval and launch, and the pause rules. |
+
+---
+
+## Watchlist life cycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> proposed: scout (evidence card)
+    proposed --> approved: you approve
+    proposed --> rejected: you reject
+    rejected --> proposed: only on a material change (e.g. new catalyst type)
+    approved --> paused: acquisition / licensing / clinical hold / trial stopped / delisting
+    approved --> paused: yearly check-in
+    approved --> paused: first full quarter after launch reported
+    approved --> paused: FDA-approved but no launch after ~6 months
+    paused --> approved: you re-approve
+    paused --> retired: you retire
+    approved --> retired: program discontinued
+    retired --> [*]
+```
+
+**What one approval covers:** the drug through every phase (development → FDA
+approval → launch) until the first full quarter after launch is reported. Each
+catalyst inside that span is still evaluated fresh, and every order still needs your
+typed approval. Paused drugs get no new buys, but the sell rules keep watching any
+open position.
+
+**Where events come from:** catalyst dates are taken only from company filings, with
+the exact sentence and link kept. ClinicalTrials.gov completion dates are sponsor
+estimates and are shown on cards but never used as catalyst dates.
 
 ---
 
@@ -331,7 +377,8 @@ The repository's test data is synthetic.
 BioTradeAI/
   config/guardrails.yaml        every risk threshold (single source of truth)
   data/
-    catalysts.csv               YOU: tickers, drugs, event dates
+    watchlist.yaml              agent proposals + YOUR approvals (git-ignored)
+    catalysts.csv               optional manual catalysts
     outcomes.csv                YOU: readout results
     synonyms.yaml               YOU: drug names -> Entity IDs
     base_rates.yaml             base rates + return assumptions (review them)
@@ -378,6 +425,16 @@ python -m biotradeai evaluate --fixture data\fixtures\scenarios\onco.yaml
 python -m biotradeai sell-replay
 python -m biotradeai backtest              # base-rate baseline -> reports/
 python -m biotradeai backtest --llm ollama:llama3.2:3b
+```
+
+**Watchlist (scout, approval, follow)**
+```powershell
+python -m biotradeai watchlist scout                 # weekly: propose company+drug pairs
+python -m biotradeai watchlist list                  # --status proposed|approved|paused|...
+python -m biotradeai watchlist show ABCD:ABC-123     # the approval card
+python -m biotradeai watchlist approve ABCD:ABC-123  # reject | retire --reason "..."
+python -m biotradeai watchlist follow                # daily: filings, trials, events, life cycle
+python -m biotradeai watchlist events                # agent-managed catalyst dates
 ```
 
 **Trading (Alpaca paper)**
@@ -450,5 +507,5 @@ real predictive skill.
 | 7 | Point-in-time backtest, metrics, reports | done |
 | 8 | Alpaca paper trading: runner, daily review, live-gate counter | built; the 8–12 week run needs your keys |
 | — | Network guardrails: allowlist, polite rates, budgets, breaker, pacing | done |
-| — | Watchlist scout, approval cards, automatic document sync and follow loop | next |
+| — | Watchlist scout, approval cards, automatic document sync and follow loop | done |
 | 3, 9, 10 | Robinhood spike, shadow mode, live pilot | last (needs your Robinhood account) |
