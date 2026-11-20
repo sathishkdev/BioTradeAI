@@ -10,6 +10,11 @@ dates and Phase 3 readouts.
 
 > Decision support only — not financial advice. Default mode is `paper` (Alpaca paper
 > trading). Live trading is blocked in code until the live gate exists.
+>
+> **Responsible data use:** BioTradeAI only reads from official public APIs (SEC,
+> ClinicalTrials.gov, NCBI, openFDA) and your own broker account. It never scrapes
+> websites, and it stays well under every provider's rate limit, enforced in code. See
+> [Data sources and network guardrails](#data-sources-and-network-guardrails).
 
 - **Set it up:** [docs/SETUP.md](docs/SETUP.md) (step by step, from install to the daily paper run)
 - **Full design:** [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)
@@ -24,6 +29,7 @@ dates and Phase 3 readouts.
 - [Tree of Thoughts in detail](#tree-of-thoughts-in-detail)
 - [Sell state machine](#sell-state-machine)
 - [Safety model](#safety-model)
+- [Data sources and network guardrails](#data-sources-and-network-guardrails)
 - [Repository layout](#repository-layout)
 - [Commands](#commands)
 - [Switching LLMs](#switching-llms)
@@ -97,7 +103,8 @@ flowchart TB
 | SEC EDGAR client | `edgar.py` | Submissions and XBRL company facts. Requires a descriptive User-Agent and is rate-limited to ≤ 10 requests/s. |
 | Runway | `runway.py` | Cash (cash + marketable securities) ÷ quarterly burn, from XBRL. Handles year-to-date differencing, restatements (latest filing wins) and point-in-time `as_of`. Burn = max(latest quarter, mean of the last 4). |
 | Freshness | `freshness.py` | TTL checks. Any input older than `ttl_hours` is rejected. |
-| HTTP | `http.py` | Shared fetcher: retries on 5xx/429 (never on other 4xx), rate limiter, mockable transport. |
+| HTTP + network guardrails | `http.py`, `netpolicy.py`, `http_limiter.py` | Shared fetcher for every data source: host allowlist, a shared jittered rate limiter per source, daily budget, circuit breaker, retries that honour `Retry-After`, a mockable transport. See [Data sources and network guardrails](#data-sources-and-network-guardrails). |
+| Pacing | `pacing.py` | Spreads bulk jobs across a time window and splits large lists into nightly rolling batches. |
 | Catalysts / outcomes | `catalysts.py`, `outcomes.py` | Loaders for the **human-curated** CSVs. These, not CT.gov, are the source of truth for event dates and results. |
 | Pollers | `pollers.py` | New SEC filings, each reported once, with offering 8-Ks classified in code. Changes to CT.gov primary completion dates. |
 
@@ -246,6 +253,75 @@ Thresholds come from `config/guardrails.yaml` (`sell.*`).
 7. **Paper first.** Live trading needs `mode: live`, `BIOTRADEAI_LIVE=1`, a typed
    confirmation, 90 paper days with zero breaches, and the pilot size caps (1%, one
    position).
+8. **Good network citizen.** Only allowed hosts, polite rate limits, daily budgets and
+   a circuit breaker. See the next section.
+
+---
+
+## Data sources and network guardrails
+
+BioTradeAI collects data only in ways the providers allow, and never in bursts.
+The rules live in [`src/biotradeai/data/netpolicy.py`](src/biotradeai/data/netpolicy.py)
+and are enforced for every request by the shared fetcher in
+[`data/http.py`](src/biotradeai/data/http.py). Tests in
+[`tests/unit/test_netpolicy.py`](tests/unit/test_netpolicy.py) prove each rule.
+
+### What we use, and what we don't
+| Used (official, public or your own account) | Never used |
+|---|---|
+| SEC EDGAR APIs and filing archives | scraping company or investor-relations websites |
+| ClinicalTrials.gov API v2 | press-release wires, news sites, search engines |
+| NCBI E-utilities (PubMed abstracts) | paid catalyst calendars, or any site whose terms forbid automated access |
+| openFDA (approvals, labels) | anything behind a login or paywall, CAPTCHA bypassing, proxies or IP rotation |
+| Alpaca, with your own paper keys | SEC full-text search (not documented for automated use) |
+
+### Per-source limits (about half of what each provider allows)
+| Source | Provider's published rule | BioTradeAI setting | Daily budget |
+|---|---|---|---|
+| SEC EDGAR | ≤ 10 requests/s per user, declared User-Agent | 5 requests/s | 20,000 |
+| ClinicalTrials.gov | no official figure found; ~50/min is the most conservative cited | 0.8 requests/s (≈ 48/min) | 5,000 |
+| NCBI / PubMed | ≤ 3/s without a key, ≤ 10/s with a free key | 2/s, or 5/s with a key | 5,000 |
+| openFDA | 240/min and 1,000/day without a key; 120,000/day with a free key | 1/s | 500, or 50,000 with a key |
+| Alpaca | per-account API limits | 1/s, reads plus your approved orders | none, so exits are never blocked |
+
+### How every request is protected
+1. **Host allowlist:** a domain that isn't listed is refused before any connection is
+   made, including redirects to other domains. A test scans the whole codebase for
+   URLs and fails on any unlisted host.
+2. **One shared limiter per source, with jitter:** every client of a source waits on
+   the same limiter, and gaps are randomly lengthened (never shortened), so requests
+   never fall into a fixed rhythm.
+3. **Back off when asked:** HTTP 429/5xx responses and network errors are retried with
+   exponential back-off. The server's `Retry-After` header is honoured, capped at
+   5 minutes. Other 4xx responses are never retried.
+4. **Daily budget:** a hard cap per source per UTC day, stored in SQLite so it holds
+   across scheduled runs. When it's reached, the source pauses until tomorrow.
+5. **Circuit breaker:** after 3 failed requests in a row, a source is switched off for
+   the rest of the UTC day. This is logged to the audit trail, and the run carries on
+   without that source.
+6. **Identify ourselves:** the SEC User-Agent you set, plus `tool=BioTradeAI` and your
+   optional `NCBI_EMAIL` for NCBI. Your email is sent only if you configure it.
+
+### Balanced bulk jobs
+Off-peak alone just moves a burst to the night, so bulk jobs (the upcoming watchlist
+scout, the biotech-universe refresh, document sync) are also **spread out**:
+- **Pacing:** `data/pacing.py:paced()` spreads a job evenly across a time window, with
+  random gaps. For example, 800 requests over 2 hours is about one every 9–11 seconds.
+  The per-source limiter still applies on top.
+- **Rolling batches:** `rolling_batch()` handles a stable 1-in-N slice per night. For
+  example, refreshing 800 companies with `parts=7` touches about 115 a night and
+  every company once a week.
+- **Incremental only:** the SEC daily filing index replaces polling every company, and
+  filings and documents already seen are never fetched again.
+
+**Expected load with 30 followed drugs:** a few hundred requests a day across all
+sources, spread over hours. The one-time universe build is about 800 SEC requests,
+spread over a week of nights.
+
+**Data use:** SEC, ClinicalTrials.gov, FDA and NLM data are public US-government data.
+PubMed abstracts can be copyrighted by their publishers; they are stored only in your
+local knowledge base for your own research and are never committed or redistributed.
+The repository's test data is synthetic.
 
 ---
 
@@ -373,4 +449,6 @@ real predictive skill.
 | 6 | Sell state machine, EDGAR/CT.gov pollers | done |
 | 7 | Point-in-time backtest, metrics, reports | done |
 | 8 | Alpaca paper trading: runner, daily review, live-gate counter | built; the 8–12 week run needs your keys |
+| — | Network guardrails: allowlist, polite rates, budgets, breaker, pacing | done |
+| — | Watchlist scout, approval cards, automatic document sync and follow loop | next |
 | 3, 9, 10 | Robinhood spike, shadow mode, live pilot | last (needs your Robinhood account) |

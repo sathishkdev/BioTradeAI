@@ -3,11 +3,14 @@
 esearch:  /entrez/eutils/esearch.fcgi?db=pubmed&term=...&retmode=json
 efetch:   /entrez/eutils/efetch.fcgi?db=pubmed&id=1,2&retmode=xml
 
-NCBI asks for at most 3 requests/second without an API key.
+NCBI asks for at most 3 requests/second without an API key (10 with one) and for
+``tool`` and ``email`` parameters. We send ``tool=BioTradeAI``, plus ``email`` and
+``api_key`` only if the user set NCBI_EMAIL / NCBI_API_KEY. Rate: data/netpolicy.py.
 """
 
 from __future__ import annotations
 
+import os
 import xml.etree.ElementTree as ET
 from datetime import UTC, datetime
 
@@ -18,7 +21,7 @@ from biotradeai.rag.ingest import Document
 from biotradeai.schemas import SourceTier
 
 BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
-NCBI_MAX_REQUESTS_PER_SECOND = 3.0
+NCBI_MAX_REQUESTS_PER_SECOND = 3.0  # published ceiling without a key
 _MONTHS = {m: i for i, m in enumerate(
     ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
 
@@ -66,12 +69,20 @@ def parse_efetch(xml_text: str, *, ticker: str, entity_id: str | None) -> list[D
 class PubMedClient:
     def __init__(self, *, transport: httpx.BaseTransport | None = None,
                  backoff_s: float = 1.0) -> None:
-        self._f = HttpFetcher(BASE, max_per_second=NCBI_MAX_REQUESTS_PER_SECOND,
-                              transport=transport, backoff_s=backoff_s)
+        self._f = HttpFetcher(BASE, source="ncbi", transport=transport, backoff_s=backoff_s)
+
+    @staticmethod
+    def _ident() -> dict[str, str]:
+        p = {"tool": "BioTradeAI"}
+        for env, key in (("NCBI_EMAIL", "email"), ("NCBI_API_KEY", "api_key")):
+            if os.environ.get(env):
+                p[key] = os.environ[env]
+        return p
 
     def search(self, term: str, *, retmax: int = 20) -> list[str]:
         data = self._f.get_json("/esearch.fcgi", params={
-            "db": "pubmed", "term": term, "retmode": "json", "retmax": retmax, "sort": "date"})
+            "db": "pubmed", "term": term, "retmode": "json", "retmax": retmax, "sort": "date",
+            **self._ident()})
         return [str(x) for x in data.get("esearchresult", {}).get("idlist", [])]
 
     def fetch(self, pmids: list[str], *, ticker: str,
@@ -79,5 +90,5 @@ class PubMedClient:
         if not pmids:
             return []
         xml_text = self._f.get_text("/efetch.fcgi", params={
-            "db": "pubmed", "id": ",".join(pmids), "retmode": "xml"})
+            "db": "pubmed", "id": ",".join(pmids), "retmode": "xml", **self._ident()})
         return parse_efetch(xml_text, ticker=ticker, entity_id=entity_id)

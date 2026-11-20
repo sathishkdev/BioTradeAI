@@ -15,13 +15,14 @@ from typing import Any
 
 import httpx
 
+from biotradeai.data import netpolicy
 from biotradeai.data.http import HttpFetcher, RateLimiter
 
 DATA_URL = "https://data.sec.gov"
 TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 SEC_MAX_REQUESTS_PER_SECOND = 10.0
-# Stay a little under the published ceiling.
-DEFAULT_REQUESTS_PER_SECOND = 8.0
+# Half the published ceiling (see data/netpolicy.py, source "sec").
+DEFAULT_REQUESTS_PER_SECOND = 5.0
 
 _EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 
@@ -174,18 +175,20 @@ class EdgarClient:
         *,
         transport: httpx.BaseTransport | None = None,
         backoff_s: float = 1.0,
-        max_per_second: float = DEFAULT_REQUESTS_PER_SECOND,
+        max_per_second: float | None = None,
     ) -> None:
-        if max_per_second > SEC_MAX_REQUESTS_PER_SECOND:
+        if max_per_second is not None and max_per_second > SEC_MAX_REQUESTS_PER_SECOND:
             raise ValueError("SEC allows at most 10 requests/second")
         ua = require_user_agent(user_agent)
         headers = {"User-Agent": ua, "Accept-Encoding": "gzip, deflate"}
-        # data.sec.gov and www.sec.gov share one fair-access budget, so one limiter.
-        limiter = RateLimiter(max_per_second)
-        self._data = HttpFetcher(DATA_URL, headers=headers, transport=transport,
-                                 backoff_s=backoff_s, limiter=limiter)
-        self._www = HttpFetcher("https://www.sec.gov", headers=headers, transport=transport,
-                                backoff_s=backoff_s, limiter=limiter)
+        # data.sec.gov and www.sec.gov share one fair-access budget, so one limiter:
+        # by default the process-wide "sec" limiter shared with every other SEC client.
+        limiter = (RateLimiter(max_per_second, jitter=0.1) if max_per_second is not None
+                   else netpolicy.limiter_for("sec"))
+        self._data = HttpFetcher(DATA_URL, source="sec", headers=headers,
+                                 transport=transport, backoff_s=backoff_s, limiter=limiter)
+        self._www = HttpFetcher("https://www.sec.gov", source="sec", headers=headers,
+                                transport=transport, backoff_s=backoff_s, limiter=limiter)
         self._ticker_map: dict[str, str] | None = None
 
     def ticker_to_cik(self, ticker: str) -> str:

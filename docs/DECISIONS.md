@@ -406,3 +406,47 @@ and breaches == 0. `paper review` summarises one day: decisions, orders placed a
 rejected, exits, skips, breaches, kill-switch events and the audit hash chain.
 Limitation: time-stop polling needs an NCT id per position, which catalysts.csv does
 not have yet, so the CT.gov date poller is not wired into the paper cycle.
+
+## D-059 — Network guardrails for every outbound data request (2026-11-20)
+Agreed with the user before building the scout: use only sanctioned access, never
+overload a provider, and never send short bursts of requests.
+`data/netpolicy.py` + `data/http.py` enforce:
+* a host allowlist, also checked on redirects (official APIs only: SEC, ClinicalTrials.gov,
+  NCBI, openFDA, Alpaca, Robinhood MCP, plus `*.test`/localhost for tests);
+* one shared, jittered rate limiter per source, at about half the published limit;
+* a daily request budget per source, persisted in SQLite (`request_ledger`);
+* a circuit breaker after 3 failures in a row that switches the source off for the
+  rest of the UTC day, logged as `network.source_off`;
+* `Retry-After` honoured (capped at 300 s), exponential back-off, other 4xx never
+  retried.
+A test fails if any URL host in `src/` is not on the allowlist, except citation-only
+links.
+
+Rates changed: SEC 8 → 5 req/s; ClinicalTrials.gov 3 → 0.8 req/s; NCBI 3 → 2 req/s
+(5 with `NCBI_API_KEY`). openFDA is set to 1 req/s with a 500/day budget (50,000 with
+`OPENFDA_API_KEY`). Alpaca gets the allowlist and a 1 req/s limiter but **no daily
+budget**, so exits can never be blocked by it.
+
+Sources checked on 2026-11-20:
+* SEC: https://www.sec.gov/os/accessing-edgar-data
+* NCBI: https://www.ncbi.nlm.nih.gov/books/NBK25497/
+* openFDA: https://open.fda.gov/apis/authentication
+* ClinicalTrials.gov publishes no number; ~50/min is the most conservative figure
+  cited by third parties.
+
+## D-060 — Balanced pacing for bulk jobs, not just off-peak timing (2026-11-20)
+At the user's request, bulk jobs are spread out in time as well as run off-peak.
+* `pacing.paced()` spreads a job across a time window, with jitter that only ever
+  lengthens gaps.
+* `pacing.rolling_batch()` processes a stable 1-in-N hash slice of a large list each
+  night.
+* Incremental fetching only: the SEC daily filing index instead of per-company polling,
+  and nothing already seen is fetched again.
+The scout and document sync (next) must use these.
+
+## D-061 — Excluded data sources (2026-11-20)
+These are not used: SEC full-text search (not documented for automated use), company
+investor-relations sites, press-release wires and news sites, search engines, paid
+catalyst calendars, and anything behind a login or paywall. PubMed abstracts are kept
+only in the local knowledge base and never committed. Optional free keys
+(`NCBI_EMAIL`, `NCBI_API_KEY`, `OPENFDA_API_KEY`) go in `.env` only.

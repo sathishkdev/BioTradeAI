@@ -169,6 +169,17 @@ Copy the 64-character output. It signs the one-time approval tokens for your ord
 
 **d) Anthropic API key (optional)** from https://console.anthropic.com/ if you use Claude.
 
+**e) NCBI contact email and API key (optional, free)** from https://www.ncbi.nlm.nih.gov/account/.
+NCBI asks automated PubMed clients for a contact email. A key raises our PubMed rate
+from 2 to 5 requests/s.
+
+**f) openFDA API key (optional, free)** from https://open.fda.gov/apis/authentication/.
+Without a key we cap openFDA at 500 requests/day, under their 1,000/day per-IP limit.
+
+None of these is needed to start. Every source works without its optional key, just
+more slowly. How each source is protected from overload: see the README section
+*Data sources and network guardrails*.
+
 ## 6. Fill in `.env`
 
 ```powershell
@@ -189,6 +200,9 @@ APPROVAL_HMAC_SECRET=<64 hex chars from step 5c>
 SEC_USER_AGENT="BioTradeAI <your name> <your email>"
 BIOTRADEAI_LIVE=0
 # ANTHROPIC_API_KEY=<key>                # only if using Claude
+# NCBI_EMAIL=<your email>                # optional (step 5e)
+# NCBI_API_KEY=<key>                     # optional (step 5e)
+# OPENFDA_API_KEY=<key>                  # optional (step 5f)
 ```
 
 `.env` is git-ignored; never commit it. Leave `LANGSMITH_TRACING` unset (it would send
@@ -351,3 +365,6 @@ cancels open orders. Only `killswitch reset` (typed `RESET`) re-enables trading.
 | PowerShell won't activate the venv | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
 | `.venv` not found | `cd` into `BioTradeAI` first, or activate by absolute path |
 | Ollama connection refused | start the Ollama app; check `OLLAMA_HOST` |
+| `... daily request budget ... is spent` | a source hit its daily cap; it resumes tomorrow (UTC). Raise it in `data/netpolicy.py` only if the provider allows more |
+| `... switched off until tomorrow` | 3 failed requests in a row (provider down or rate-limiting); it resumes tomorrow (UTC) |
+| `... is not an allowed data source` | the code tried an unlisted host; that's the guardrail working. Add a host only if it is an official API |

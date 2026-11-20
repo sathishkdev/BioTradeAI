@@ -31,6 +31,7 @@ from biotradeai.agents.llm import LLMError, LLMMessage, make_llm_client, resolve
 from biotradeai.brokers.approval import ApprovalError
 from biotradeai.brokers.base import BrokerError
 from biotradeai.config import ConfigError, load_config
+from biotradeai.data import netpolicy
 from biotradeai.data.catalysts import CatalystFileError, load_catalysts
 from biotradeai.data.clinicaltrials import ClinicalTrialsClient, parse_study
 from biotradeai.data.edgar import EdgarClient, EdgarConfigError, parse_company_facts
@@ -41,7 +42,7 @@ from biotradeai.guardrails import rules
 from biotradeai.paths import REPO_ROOT
 from biotradeai.rag.embeddings import EmbeddingError
 from biotradeai.rag.ontology import OntologyError
-from biotradeai.store.sqlite_store import SQLiteStore
+from biotradeai.store.sqlite_store import SQLiteLedger, SQLiteStore
 
 
 def _cmd_config_check(_: argparse.Namespace) -> int:
@@ -167,6 +168,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     load_dotenv(REPO_ROOT / ".env")
+    # Request budgets and the circuit breaker persist across runs (data/netpolicy.py).
+    netpolicy.use_ledger(SQLiteLedger())
     args = build_parser().parse_args(argv)
     try:
         rc: int = args.fn(args)

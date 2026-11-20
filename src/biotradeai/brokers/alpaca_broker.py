@@ -32,11 +32,16 @@ from biotradeai.brokers.base import (
     Quote,
     ensure_limit_only,
 )
+from biotradeai.data import netpolicy
 from biotradeai.redact import redact
 from biotradeai.schemas import OrderSide, OrderType, StagedOrder
 
 PAPER_URL = "https://paper-api.alpaca.markets"
 DATA_URL = "https://data.alpaca.markets"
+
+
+def _check_host(request: httpx.Request) -> None:
+    netpolicy.check_url(str(request.url))
 
 
 def _dec(v: Any) -> Decimal:
@@ -73,17 +78,22 @@ class AlpacaBroker:
         if not key_id or not secret:
             raise BrokerError("ALPACA_API_KEY / ALPACA_API_SECRET are not set")
         headers = {"APCA-API-KEY-ID": key_id, "APCA-API-SECRET-KEY": secret}
+        hooks = {"request": [_check_host]}
         self._trade = httpx.Client(base_url=PAPER_URL, headers=headers, timeout=timeout_s,
-                                   transport=transport)
+                                   transport=transport, event_hooks=hooks)
         self._data = httpx.Client(base_url=DATA_URL, headers=headers, timeout=timeout_s,
-                                  transport=transport)
+                                  transport=transport, event_hooks=hooks)
         self._feed = feed
 
     # ------------------------------------------------------------------ http
 
     def _req(self, client: httpx.Client, method: str, url: str, **kw: Any) -> Any:
+        # Shared "alpaca" limiter; no daily budget so exits are never blocked by it.
+        netpolicy.limiter_for("alpaca").acquire()
         try:
             resp = client.request(method, url, **kw)
+        except netpolicy.BlockedHostError as exc:
+            raise BrokerError(str(exc)) from exc
         except httpx.HTTPError as exc:
             raise BrokerError(f"alpaca {method} {url}: {exc}") from exc
         if resp.status_code >= 400:

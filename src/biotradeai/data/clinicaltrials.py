@@ -21,7 +21,7 @@ from biotradeai.data.http import FetchError, HttpFetcher
 BASE_URL = "https://clinicaltrials.gov/api/v2"
 NCT_PATTERN = re.compile(r"^NCT\d{8}$")
 # No published hard limit; stay polite.
-CTGOV_MAX_REQUESTS_PER_SECOND = 3.0
+CTGOV_MAX_REQUESTS_PER_SECOND = 0.8  # see data/netpolicy.py
 
 
 class DatePrecision(StrEnum):
@@ -129,8 +129,8 @@ class ClinicalTrialsClient:
     ) -> None:
         self._f = fetcher or HttpFetcher(
             BASE_URL,
+            source="ctgov",
             headers={"Accept": "application/json"},
-            max_per_second=CTGOV_MAX_REQUESTS_PER_SECOND,
             transport=transport,
             backoff_s=backoff_s,
         )

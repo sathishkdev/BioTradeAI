@@ -14,7 +14,7 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -92,6 +92,15 @@ CREATE TABLE IF NOT EXISTS seen_filings (
     form        TEXT NOT NULL,
     filed_on    TEXT NOT NULL,
     seen_at     TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS request_ledger (
+    source    TEXT NOT NULL,
+    day       TEXT NOT NULL,
+    count     INTEGER NOT NULL DEFAULT 0,
+    failures  INTEGER NOT NULL DEFAULT 0,
+    tripped   INTEGER NOT NULL DEFAULT 0 CHECK (tripped IN (0, 1)),
+    PRIMARY KEY (source, day)
 );
 
 CREATE TABLE IF NOT EXISTS killswitch_counters (
@@ -345,8 +354,90 @@ class SQLiteStore:
                 "VALUES (?, ?, ?, ?, ?)", (accession, ticker, form, filed_on, _now()))
             return cur.rowcount == 1
 
+    # ------------------------------------------------------------------ request ledger
+
+    def _ledger_bump(self, source: str, day: str, col: str) -> int:
+        if col not in ("count", "failures"):  # pragma: no cover - internal guard
+            raise ValueError(col)
+        with self._connect() as conn:
+            conn.execute("INSERT OR IGNORE INTO request_ledger(source, day) VALUES (?, ?)",
+                         (source, day))
+            conn.execute(f"UPDATE request_ledger SET {col} = {col} + 1 "  # noqa: S608
+                         "WHERE source = ? AND day = ?", (source, day))
+            row = conn.execute(f"SELECT {col} FROM request_ledger "  # noqa: S608
+                               "WHERE source = ? AND day = ?", (source, day)).fetchone()
+        return int(row[0])
+
+    def ledger_row(self, source: str, day: str) -> tuple[int, int, bool]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT count, failures, tripped FROM request_ledger "
+                               "WHERE source = ? AND day = ?", (source, day)).fetchone()
+        return (0, 0, False) if row is None else (int(row[0]), int(row[1]), bool(row[2]))
+
+    def ledger_consume(self, source: str, day: str) -> int:
+        return self._ledger_bump(source, day, "count")
+
+    def ledger_fail(self, source: str, day: str) -> int:
+        return self._ledger_bump(source, day, "failures")
+
+    def ledger_set(self, source: str, day: str, *, failures: int | None = None,
+                   tripped: bool | None = None) -> None:
+        with self._connect() as conn:
+            conn.execute("INSERT OR IGNORE INTO request_ledger(source, day) VALUES (?, ?)",
+                         (source, day))
+            if failures is not None:
+                conn.execute("UPDATE request_ledger SET failures = ? WHERE source = ? "
+                             "AND day = ?", (failures, source, day))
+            if tripped is not None:
+                conn.execute("UPDATE request_ledger SET tripped = ? WHERE source = ? "
+                             "AND day = ?", (int(tripped), source, day))
+
     def get_nct(self, nct_id: str) -> dict[str, Any] | None:
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             r = conn.execute("SELECT * FROM evaluated_ncts WHERE nct_id = ?", (nct_id,)).fetchone()
         return dict(r) if r else None
+
+
+class SQLiteLedger:
+    """Request budgets and circuit-breaker state that survive between runs.
+
+    Opens the store lazily, so commands that never touch the network never create
+    the database just to satisfy the ledger.
+    """
+
+    def __init__(self, path: Path | str | None = None) -> None:
+        self._path = path
+        self._store: SQLiteStore | None = None
+        self._tripped_logged: set[tuple[str, str]] = set()
+
+    @property
+    def store(self) -> SQLiteStore:
+        if self._store is None:
+            self._store = SQLiteStore(self._path)
+        return self._store
+
+    def consume(self, source: str, day: date) -> int:
+        return self.store.ledger_consume(source, day.isoformat())
+
+    def failures(self, source: str, day: date) -> int:
+        return self.store.ledger_row(source, day.isoformat())[1]
+
+    def record_failure(self, source: str, day: date) -> int:
+        return self.store.ledger_fail(source, day.isoformat())
+
+    def record_success(self, source: str, day: date) -> None:
+        if self.failures(source, day):
+            self.store.ledger_set(source, day.isoformat(), failures=0)
+
+    def is_tripped(self, source: str, day: date) -> bool:
+        return self.store.ledger_row(source, day.isoformat())[2]
+
+    def trip(self, source: str, day: date) -> None:
+        self.store.ledger_set(source, day.isoformat(), tripped=True)
+        key = (source, day.isoformat())
+        if key not in self._tripped_logged:
+            self._tripped_logged.add(key)
+            self.store.append_audit("network.source_off", {
+                "source": source, "day": day.isoformat(),
+                "reason": "repeated failed requests (circuit breaker)"})
