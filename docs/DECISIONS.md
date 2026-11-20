@@ -521,3 +521,25 @@ request. Guardrails:
 * ClinicalTrials.gov documents now include primary endpoints and any posted
   primary-outcome results (title, time frame, p-value) — field names verified live.
 * FDA briefing PDFs and company websites stay manual (`rag ingest`), per D-061.
+
+## D-067 — Scout filters tightened after the first live run (2026-11-20)
+The first live run (2 days of SEC filings, 643 Phase 3 trials) proposed large
+profitable companies and listed a competitor's comparator drug among a sponsor's drug
+names. Fixes:
+* Companies that aren't burning cash are filtered as "profitable" (large or diversified;
+  one catalyst rarely moves them).
+* With `--with-quotes`, companies with a market cap above $10B are filtered too.
+* Companies whose runway can't be computed (e.g. foreign IFRS filers) are filtered: the
+  Risk Agent would veto them anyway.
+* From a trial, only the first (investigational) intervention and its listed other names
+  become the drug's names. Comparators and combination partners are shown on the card
+  as "given with", and doses, pure numbers and 2–3 letter abbreviations are dropped.
+* IDs are tidy (`TICKER:CODE`, no spaces or brackets).
+* The card says whether a company-stated date exists yet; ClinicalTrials.gov-only
+  proposals become tradable only once a filing gives a date.
+* The shortlist enriched per run is 4× the proposal cap, so filtering still leaves
+  enough candidates.
+
+Result of the second live run: 5 profitable and 2 runway-unavailable companies were
+filtered out, and 3 small/mid-cap pairs were proposed. With the company cache warm,
+the run took about 25 seconds.

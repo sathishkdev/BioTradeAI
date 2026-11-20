@@ -59,9 +59,11 @@ def print_card(e: WatchEntry) -> None:
     _line("found via", ", ".join(c.get("sources") or []))
     _line("match", c.get("match"))
     rw = c.get("runway") or {}
-    if "months" in rw:
-        _line("cash runway", f"{rw['months']} months (cash ${float(rw['cash']):,.0f}, "
-                             f"burn ${float(rw['quarterly_burn']):,.0f}/qtr, as of "
+    if "cash" in rw:
+        months = (f"{rw['months']} months" if rw.get("months") is not None
+                  else "not burning cash")
+        _line("cash runway", f"{months} (cash ${float(rw['cash']):,.0f}, burn "
+                             f"${float(rw['quarterly_burn']):,.0f}/qtr, as of "
                              f"{rw['balance_sheet_date']})")
     else:
         _line("cash runway", rw.get("error"))
@@ -77,6 +79,7 @@ def print_card(e: WatchEntry) -> None:
     for t in d.get("trials") or []:
         print(f"  trial            {t['nct']} [{t['status']}] {t['title'][:70]}")
         _line("  endpoint", t.get("endpoint"))
+        _line("  given with", ", ".join(t.get("with") or []))
         _line("  enrollment", t.get("enrollment"))
         _line("  completion", f"{t.get('primary_completion')} (sponsor estimate)")
     for k in c.get("catalysts") or []:
@@ -85,13 +88,18 @@ def print_card(e: WatchEntry) -> None:
         print(f"                   \"{k['sentence'][:220]}\"")
         print(f"                   {k['url']}")
     _line("note", c.get("ctgov_note"))
-    _line("concentration", (c.get("concentration") or {}).get(
-        "sponsor_phase3_trials_in_window"))
+    _line("Phase 3s due", (c.get("concentration") or {}).get(
+        "phase3_trials_completing_in_3_to_12_months"))
     for f in c.get("red_flags") or []:
         print(f"  RED FLAG         {f}")
     fit = c.get("fit") or {}
-    _line("tradable event", "yes" if fit.get("supported_event") else
-          "no (tracked only until base rates exist)")
+    if fit.get("has_tradable_date"):
+        _line("tradable", "yes: supported event with a company-stated date")
+    elif fit.get("supported_event"):
+        _line("tradable", "supported event type; becomes tradable once a company filing "
+                          "states a date (the follow loop watches for it)")
+    else:
+        _line("tradable", "no (tracked only until base rates exist)")
     if c.get("previously"):
         _line("previously", json.dumps(c["previously"]))
     _line("pause reason", e.pause_reason)

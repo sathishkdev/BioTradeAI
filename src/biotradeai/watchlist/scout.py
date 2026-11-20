@@ -51,12 +51,31 @@ CT_WINDOW = (60, 365)  # days ahead for Phase 3 primary completion
 INITIAL_LOOKBACK_DAYS = 7
 MAX_LOOKBACK_DAYS = 14
 LARGE_SPONSOR_TRIALS = 10  # many Phase 3s = diversified; one readout rarely moves it
+MAX_MARKET_CAP = Decimal(10) ** 10  # $10B: above this one catalyst rarely moves the stock
 _NON_DRUG = re.compile(r"placebo|standard of care|best supportive|vehicle|saline|"
                        r"observation|usual care", re.I)
 _SUFFIX = re.compile(r"\b(incorporated|inc|corporation|corp|company|co|ltd|limited|plc|"
                      r"holdings?|group|sa|ag|nv|se|llc|lp|the)\b")
 _GOING_CONCERN = re.compile(r"substantial doubt[^.]{0,80}going concern", re.I)
 _ATM = re.compile(r"at[- ]the[- ]market", re.I)
+
+
+_DOSE = re.compile(r"\s*\b\d+(\.\d+)?\s*(mg|mcg|ug|g|ml|mg/kg|iu|%)\b.*$", re.I)
+
+
+def clean_names(raw: list[str]) -> list[str]:
+    """'ZL-1109 (VRDN-003)' -> ['ZL-1109', 'VRDN-003']; drops doses and 2-3 letter
+    abbreviations (too collision-prone to be drug names)."""
+    out: list[str] = []
+    for r in raw:
+        for part in re.split(r"[()\[\];,]", r):
+            name = _DOSE.sub("", part).strip(" -")
+            if (not name or len(re.findall(r"[A-Za-z]", name)) < 2
+                    or (len(name) <= 3 and not re.search(r"\d", name))):
+                continue
+            if drug_key(name) not in {drug_key(x) for x in out}:
+                out.append(name)
+    return out
 
 
 def norm_company(name: str) -> str:
@@ -182,20 +201,28 @@ class Scout:
                     page_size=100, max_pages=10):
                 rep.trials_seen += 1
                 ps = rec.raw.get("protocolSection") or {}
-                drugs = [i.get("name", "") for i in
-                         (ps.get("armsInterventionsModule") or {}).get("interventions") or []
-                         if str(i.get("type", "")).upper() in ("DRUG", "BIOLOGICAL", "GENETIC",
-                                                                 "COMBINATION_PRODUCT")
-                         and i.get("name") and not _NON_DRUG.search(i["name"])]
+                ivs = [i for i in
+                       (ps.get("armsInterventionsModule") or {}).get("interventions") or []
+                       if str(i.get("type", "")).upper() in ("DRUG", "BIOLOGICAL", "GENETIC",
+                                                               "COMBINATION_PRODUCT")
+                       and i.get("name") and not _NON_DRUG.search(i["name"])]
+                if not ivs:
+                    continue
+                # The first listed intervention is the investigational drug; the others are
+                # usually comparators or combination partners (often other companies' drugs).
+                drugs = clean_names([str(ivs[0]["name"]),
+                                     *[str(n) for n in ivs[0].get("otherNames") or []]])
                 if not drugs:
                     continue
+                partners = [str(i["name"]) for i in ivs[1:4]]
                 endpoint = ((ps.get("outcomesModule") or {}).get("primaryOutcomes")
                             or [{}])[0].get("measure", "")
                 enroll = ((ps.get("designModule") or {}).get("enrollmentInfo") or {}).get(
                     "count")
                 by_sponsor.setdefault(rec.sponsor, []).append({
                     "nct": rec.nct_id, "title": rec.title[:200], "status": rec.overall_status,
-                    "drugs": drugs[:4], "endpoint": str(endpoint)[:200], "enrollment": enroll,
+                    "drugs": drugs[:4], "with": partners, "endpoint": str(endpoint)[:200],
+                    "enrollment": enroll,
                     "conditions": list(rec.conditions[:3]),
                     "primary_completion": rec.primary_completion.raw
                     if rec.primary_completion else None})
@@ -231,7 +258,7 @@ class Scout:
             if not (co.is_biotech and co.is_listed):
                 continue
             for t in trials:
-                c = self._cand(co, t["drugs"][:2])
+                c = self._cand(co, t["drugs"])
                 c.trials.append(t)
                 c.sponsor_trials = len(trials)
                 c.match = f"CT.gov sponsor '{sponsor}' -> {co.name} ({how})"
@@ -243,14 +270,19 @@ class Scout:
             r = compute_runway(self.edgar.company_facts(c.cik),
                                lookback_quarters=self.cfg.runway.burn_lookback_quarters,
                                as_of=self.today)
-            c.runway = {"months": round(r.runway_months, 1), "cash": str(r.liquidity),
+            c.runway = {"months": round(r.runway_months, 1) if r.burning else None,
+                        "burning": r.burning, "cash": str(r.liquidity),
                         "quarterly_burn": str(r.quarterly_burn),
                         "balance_sheet_date": r.balance_sheet_date.isoformat()}
-            if not rules.check_runway(r.runway_months, self.cfg).ok:
+            if not r.burning:
+                c.filtered = ("profitable: not burning cash (large or diversified company; "
+                              "one catalyst rarely moves it)")
+            elif not rules.check_runway(r.runway_months, self.cfg).ok:
                 c.filtered = f"runway {r.runway_months:.1f} mo < {self.cfg.min_runway_months}"
         except (RunwayUnavailableError, FetchError) as exc:
             c.runway = {"error": str(exc)[:160]}
-            c.flags.append("runway could not be computed")
+            # e.g. foreign (IFRS) filers: no runway means the Risk Agent would veto anyway
+            c.filtered = "runway-unavailable (no US-GAAP cash/burn data)"
         try:
             subs = self.edgar.submissions(c.cik)
             recent = [f for f in subs.filings
@@ -272,7 +304,11 @@ class Scout:
                     c.filtered = c.filtered or f"spread {spread} above limit or no quote"
                 shares = _shares_outstanding(self.edgar, c.cik)
                 if shares:
-                    c.market["market_cap"] = str(int(shares * (q.bid + q.ask) / 2))
+                    cap = shares * (q.bid + q.ask) / 2
+                    c.market["market_cap"] = str(int(cap))
+                    if cap > MAX_MARKET_CAP:
+                        c.filtered = c.filtered or (f"market cap ~${cap / 10**9:.0f}B above "
+                                                    f"${MAX_MARKET_CAP / 10**9:.0f}B")
             except Exception as exc:
                 c.market = {"error": str(exc)[:120]}
 
@@ -324,7 +360,7 @@ class Scout:
             if not c.company.ticker:
                 continue
             fresh.append((c, material))
-        prelim = sorted(fresh, key=lambda t: -self._score(t[0]))[: self.max_proposals * 2]
+        prelim = sorted(fresh, key=lambda t: -self._score(t[0]))[: self.max_proposals * 4]
         for c, _ in paced(prelim, window_s=self.window_s, sleep=self._sleep):
             self._enrich(c)
             c.score = self._score(c)
@@ -367,13 +403,17 @@ class Scout:
             "catalysts": c.sec[:5],
             "ctgov_note": "ClinicalTrials.gov dates are sponsor estimates, never used as "
                           "catalyst dates" if c.trials else None,
-            "concentration": {"sponsor_phase3_trials_in_window": c.sponsor_trials},
+            "concentration": {"phase3_trials_completing_in_3_to_12_months":
+                              c.sponsor_trials},
             "red_flags": c.flags,
             "fit": {"supported_event": any(x["event"] in SUPPORTED for x in c.sec)
                     or bool(c.trials),
+                    "has_tradable_date": any(x["event"] in SUPPORTED and x["precision"] in
+                                             ("day", "month", "quarter") for x in c.sec),
                     "events": sorted({x["event"] for x in c.sec})},
         }
-        return WatchEntry(id=f"{ticker}:{primary}", cik=c.cik, ticker=ticker,
+        slug = re.sub(r"[^A-Za-z0-9]+", "-", primary).strip("-")[:40]
+        return WatchEntry(id=f"{ticker}:{slug}", cik=c.cik, ticker=ticker,
                           company=c.company.name, entity_id=entity_id_for(ticker, primary),
                           drug_names=names, trial_ids=[t["nct"] for t in c.trials][:5],
                           score=round(c.score, 2), proposed_at=datetime.now(UTC), card=card)

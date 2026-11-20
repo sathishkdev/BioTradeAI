@@ -452,3 +452,45 @@ def test_trial_results_lines() -> None:
     assert lines[0] == "Primary endpoint: Overall response rate (time frame: 24 weeks)."
     assert lines[1] == "Posted primary outcome result: ORR (time frame: 24 weeks); p=0.001 (CMH)."
     assert len(lines) == 2
+
+
+def test_scout_filters_profitable_companies(tmp_path: Path, store: SQLiteStore,
+                                            cfg: GuardrailsConfig) -> None:
+    mock = Mock()
+    _with_8k(mock)
+    mock.facts = json.loads((REPO_ROOT / "data" / "fixtures" / "edgar" / "companyfacts" /
+                             "PROF.json").read_text(encoding="utf-8"))
+    rep = _scout(mock, store, Watchlist(tmp_path / "wl.yaml"), cfg).run()
+    assert rep.proposed == [] and rep.filtered.get("profitable:")
+
+
+def test_ctgov_names_exclude_comparators_and_clean_aliases(
+        tmp_path: Path, store: SQLiteStore, cfg: GuardrailsConfig) -> None:
+    mock = Mock()  # CT.gov signal only
+    mock.study["protocolSection"]["armsInterventionsModule"]["interventions"] = [
+        {"type": "DRUG", "name": "ONC-101 (oncotinib) 100 mg"},
+        {"type": "DRUG", "name": "Pembrolizumab"}, {"type": "DRUG", "name": "Placebo"}]
+    wl = Watchlist(tmp_path / "wl.yaml")
+    rep = _scout(mock, store, wl, cfg).run()
+    assert rep.proposed == ["ONCO:ONC-101"]
+    e = wl.get("ONCO:ONC-101")
+    assert e.drug_names == ["ONC-101", "oncotinib"]  # no comparator, no dose
+    assert e.card["drug"]["trials"][0]["with"] == ["Pembrolizumab"]
+    assert e.card["fit"]["has_tradable_date"] is False  # CT.gov dates never tradable
+
+
+def test_clean_names_and_tidy_ids() -> None:
+    from biotradeai.watchlist.scout import clean_names
+    assert clean_names(["ZL-1109 (VRDN-003)"]) == ["ZL-1109", "VRDN-003"]
+    assert clean_names(["Sacituzumab govitecan-hziy (SG)"]) == ["Sacituzumab govitecan-hziy"]
+    assert clean_names(["Ritlecitinib 100 mg", "ritlecitinib"]) == ["Ritlecitinib"]
+
+
+def test_numbers_are_not_drug_names_and_missing_runway_is_filtered(
+        tmp_path: Path, store: SQLiteStore, cfg: GuardrailsConfig) -> None:
+    from biotradeai.watchlist.scout import clean_names
+    assert clean_names(["PCV21 vaccine", "515"]) == ["PCV21 vaccine"]
+    mock = Mock()
+    mock.facts = {"cik": 9000001, "entityName": "Foreign Co", "facts": {}}
+    rep = _scout(mock, store, Watchlist(tmp_path / "wl.yaml"), cfg).run()
+    assert rep.proposed == [] and rep.filtered.get("runway-unavailable")
