@@ -543,3 +543,22 @@ names. Fixes:
 Result of the second live run: 5 profitable and 2 runway-unavailable companies were
 filtered out, and 3 small/mid-cap pairs were proposed. With the company cache warm,
 the run took about 25 seconds.
+
+## D-068 — Scout drops already-approved drugs and caps market cap at $5B (2026-11-20)
+The user asked for both after the watchlist review.
+* **Approved drugs:** openFDA Drugs@FDA (`data/openfda.py`) is searched by each generic
+  or brand name on the card; codes are never searched. A record with an original
+  approval (`ORIG` + `AP`) filters the pair as `already-approved`. Response format
+  verified live: resmetirom → NDA217785 / REZDIFFRA / 2024-03-14; a name with no
+  record returns HTTP 404. Answers are cached for 30 days. The source is `openfda`,
+  1 req/s, 500/day without a key.
+* **Known trade-off:** label-expansion trials of an approved drug are filtered too. The
+  live run found mavorixafor (X4, approved 2024-04-26 as XOLREMDI) being tested in a
+  new disease. The user chose filtering; a red flag would be the alternative.
+* **Coverage limit:** Drugs@FDA covers CDER drugs and CDER biologics. Vaccines, cell and
+  gene therapies (CBER) are not in it, so "no record" does not prove "not approved".
+* **Market cap:** the ceiling is now $5B (`--max-market-cap-billions`). It applies with
+  `--with-quotes`.
+* **Fix:** market cap used (bid + ask) / 2 even when one side was 0 after hours, which
+  halved it (Immunocore showed ~$564M). The midpoint is now used only when both sides
+  are quoted; otherwise the quoted side is used.

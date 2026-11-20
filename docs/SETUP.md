@@ -247,9 +247,18 @@ python -m biotradeai watchlist scout
 
 It reads the SEC daily filing index for 8-Ks from listed biotech companies, and
 ClinicalTrials.gov for industry Phase 3 trials finishing in 3–12 months. It matches
-trial sponsors to listed companies, drops anything with under 6 months of runway or
-already decided, ranks what is left, and proposes up to 10 pairs. Add `--with-quotes` to
-include spread and market cap from Alpaca. On the first run, the SEC index scan builds a
+trial sponsors to listed companies, and drops:
+* profitable companies;
+* anything with under 6 months of runway, or no runway data;
+* drugs already FDA-approved (an openFDA check, which also drops label-expansion
+  trials);
+* pairs you have already decided.
+
+It then ranks what is left and proposes up to 10 pairs.
+
+Add `--with-quotes` to include spread and market cap from Alpaca. That also drops
+companies above $5B (change it with `--max-market-cap-billions`). Spread is shown on
+the card only; it is checked again on a live quote at trade time. On the first run, the SEC index scan builds a
 company cache, which takes a few minutes at our polite 5 requests/second.
 
 **b) Review each proposal's card and decide:**

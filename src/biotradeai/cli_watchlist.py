@@ -19,6 +19,7 @@ import argparse
 import getpass
 import json
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 
 from biotradeai.brokers.alpaca_broker import AlpacaBroker
@@ -26,6 +27,7 @@ from biotradeai.brokers.base import Broker, BrokerError
 from biotradeai.config import load_config
 from biotradeai.data.clinicaltrials import ClinicalTrialsClient
 from biotradeai.data.edgar import EdgarClient
+from biotradeai.data.openfda import OpenFDAClient
 from biotradeai.data.secindex import SecDirectory
 from biotradeai.rag.embeddings import make_embedder
 from biotradeai.rag.index import VectorIndex
@@ -90,6 +92,10 @@ def print_card(e: WatchEntry) -> None:
     _line("note", c.get("ctgov_note"))
     _line("Phase 3s due", (c.get("concentration") or {}).get(
         "phase3_trials_completing_in_3_to_12_months"))
+    fa = c.get("fda_approval") or {}
+    if fa:
+        _line("FDA approved", f"{fa.get('brand') or fa.get('generic')} ({fa.get('application')}, "
+                              f"{fa.get('approved_on')}, {fa.get('sponsor')})")
     lic = c.get("licensing") or {}
     if lic:
         _line("licensing", f"{lic.get('role')}: code {lic.get('code')} links to "
@@ -125,9 +131,12 @@ def _broker(enabled: bool) -> Broker | None:
 def cmd_scout(args: argparse.Namespace) -> int:
     cfg = load_config()
     wl = Watchlist()
-    scout = Scout(edgar=EdgarClient(), ctgov=ClinicalTrialsClient(), store=SQLiteStore(),
+    store = SQLiteStore()
+    scout = Scout(edgar=EdgarClient(), ctgov=ClinicalTrialsClient(), store=store,
                   watchlist=wl, cfg=cfg, today=_today(), broker=_broker(args.with_quotes),
-                  spread_minutes=args.spread_minutes, max_proposals=args.max)
+                  spread_minutes=args.spread_minutes, max_proposals=args.max,
+                  fda=OpenFDAClient(store),
+                  max_market_cap=Decimal(str(args.max_market_cap_billions)) * 10**9)
     rep = scout.run()
     print(f"scanned SEC index days {rep.days_scanned or 'none new'}; read {rep.filings_read} "
           f"biotech 8-K(s); saw {rep.trials_seen} Phase 3 trial(s); {rep.candidates} "
@@ -240,6 +249,8 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     s.add_argument("--max", type=int, default=10, help="max proposals per run")
     s.add_argument("--spread-minutes", type=float, default=0.0,
                    help="spread requests over this many minutes (scheduled runs)")
+    s.add_argument("--max-market-cap-billions", type=float, default=5.0,
+                   help="filter out companies above this market cap (needs --with-quotes)")
     s.add_argument("--with-quotes", action="store_true",
                    help="add spread/market cap from Alpaca (needs keys)")
     s.set_defaults(fn=cmd_scout)

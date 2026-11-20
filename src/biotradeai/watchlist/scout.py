@@ -29,6 +29,7 @@ from biotradeai.config import GuardrailsConfig
 from biotradeai.data.clinicaltrials import ClinicalTrialsClient
 from biotradeai.data.edgar import EdgarClient
 from biotradeai.data.http import FetchError
+from biotradeai.data.openfda import OpenFDAClient
 from biotradeai.data.pacing import paced
 from biotradeai.data.runway import RunwayUnavailableError, compute_runway
 from biotradeai.data.secindex import (
@@ -59,7 +60,8 @@ MAX_LOOKBACK_DAYS = 14
 LARGE_SPONSOR_TRIALS = 10  # many Phase 3s = diversified; one readout rarely moves it
 # Drug code with a letter prefix of 3+ letters, e.g. VRDN-003 / ABC123 (prefix = group 1).
 LICENSE_CODE = re.compile(r"^([A-Z]{3,6})-?\d{2,6}[A-Z]?$")
-MAX_MARKET_CAP = Decimal(10) ** 10  # $10B: above this one catalyst rarely moves the stock
+# $5B (user choice 2026-11-20): above this one catalyst rarely moves the stock.
+MAX_MARKET_CAP = Decimal(5) * Decimal(10) ** 9
 _NON_DRUG = re.compile(r"placebo|standard of care|best supportive|vehicle|saline|"
                        r"observation|usual care", re.I)
 _SUFFIX = re.compile(r"\b(incorporated|inc|corporation|corp|company|co|ltd|limited|plc|"
@@ -114,6 +116,7 @@ class Candidate:
     runway: dict[str, Any] | None = None
     market: dict[str, Any] | None = None
     licensing: dict[str, Any] | None = None
+    approval: dict[str, Any] | None = None
     preferred_name: str | None = None
     score: float = 0.0
 
@@ -140,12 +143,14 @@ class Scout:
                  watchlist: Watchlist, cfg: GuardrailsConfig, today: date,
                  broker: Broker | None = None, spread_minutes: float = 0.0,
                  max_proposals: int = 10, soft_cap: int = DEFAULT_SOFT_CAP,
+                 fda: OpenFDAClient | None = None, max_market_cap: Decimal = MAX_MARKET_CAP,
                  sleep: Callable[[float], None] = time.sleep) -> None:
         self.edgar, self.ctgov, self.store, self.wl = edgar, ctgov, store, watchlist
         self.dir = SecDirectory(edgar, store)
         self.cfg, self.today, self.broker = cfg, today, broker
         self.window_s = spread_minutes * 60
         self.max_proposals, self.soft_cap, self._sleep = max_proposals, soft_cap, sleep
+        self.fda, self.max_market_cap = fda, max_market_cap
         self._cands: dict[tuple[str, str], Candidate] = {}
         self._rows: list[tuple[str, str, str, str]] | None = None
 
@@ -358,6 +363,21 @@ class Scout:
             c.runway = {"error": str(exc)[:160]}
             # e.g. foreign (IFRS) filers: no runway means the Risk Agent would veto anyway
             c.filtered = "runway-unavailable (no US-GAAP cash/burn data)"
+        if self.fda is not None:
+            for name in c.names:
+                try:
+                    a = self.fda.approval(name)
+                except FetchError as exc:
+                    c.flags.append(f"FDA approval check failed: {exc}"[:160])
+                    break
+                if a is not None:
+                    c.approval = {"brand": a.brand, "generic": a.generic,
+                                  "application": a.application, "sponsor": a.sponsor,
+                                  "approved_on": a.approved_on.isoformat()}
+                    c.filtered = c.filtered or (
+                        f"already-approved: {a.brand or a.generic} ({a.application}, "
+                        f"{a.approved_on}); includes label-expansion trials")
+                    break
         try:
             subs = self.edgar.submissions(c.cik)
             recent = [f for f in subs.filings
@@ -383,12 +403,15 @@ class Scout:
                     c.flags.append(f"wide spread on scout quote ({shown}); re-checked at "
                                    "trade time")
                 shares = _shares_outstanding(self.edgar, c.cik)
-                if shares:
-                    cap = shares * (q.bid + q.ask) / 2
+                # Mid only when both sides are quoted (after hours one side is often 0).
+                price = (q.bid + q.ask) / 2 if q.bid > 0 and q.ask > 0 else max(q.bid, q.ask)
+                if shares and price > 0:
+                    cap = shares * price
                     c.market["market_cap"] = str(int(cap))
-                    if cap > MAX_MARKET_CAP:
-                        c.filtered = c.filtered or (f"market cap ~${cap / 10**9:.0f}B above "
-                                                    f"${MAX_MARKET_CAP / 10**9:.0f}B")
+                    if cap > self.max_market_cap:
+                        c.filtered = c.filtered or (
+                            f"market-cap ~${cap / 10**9:.1f}B above "
+                            f"${self.max_market_cap / 10**9:.0f}B")
             except Exception as exc:
                 c.market = {"error": str(exc)[:120]}
 
@@ -489,6 +512,7 @@ class Scout:
                               c.sponsor_trials},
             "red_flags": c.flags,
             "licensing": c.licensing,
+            "fda_approval": c.approval,
             "fit": {"supported_event": any(x["event"] in SUPPORTED for x in c.sec)
                     or bool(c.trials),
                     "has_tradable_date": any(x["event"] in SUPPORTED and x["precision"] in

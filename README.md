@@ -165,7 +165,7 @@ Triggers are listed in the [Sell state machine](#sell-state-machine) section bel
 |---|---|---|
 | SEC index + company cache | `data/secindex.py` | One SEC daily index file per business day lists every filing. Company records (industry code, tickers, exchange) are cached for 30 days. |
 | Text signals | `data/signals.py` | Deterministic extraction from filings: catalyst sentences with exact dates or windows, drug codes, endpoint met/missed, CRL, FDA approval, launch, discontinuation, acquisition and licensing. Hedged wording is ignored. |
-| Scout | `watchlist/scout.py` | Proposes company+drug pairs using two signals: 8-Ks from listed biotechs, and ClinicalTrials.gov Phase 3 trials finishing in 3–12 months (sponsor matched to a ticker). Filters on runway and spread, ranks, caps, and writes an evidence card. Never approves anything. |
+| Scout | `watchlist/scout.py` | Proposes company+drug pairs using two signals: 8-Ks from listed biotechs, and ClinicalTrials.gov Phase 3 trials finishing in 3–12 months (sponsor matched to a ticker). Filters out: profitable companies, under 6 months of runway, no runway data, drugs already FDA-approved (openFDA), and, with quotes, market cap over $5B. Then it ranks, caps, and writes an evidence card. Never approves anything. |
 | Watchlist | `watchlist/model.py` | One entry per company+drug, stored in `data/watchlist.yaml`. Status goes proposed → approved / rejected → paused / retired. Duplicates and past rejections are suppressed. |
 | Catalyst events | `watchlist/catalysts.py` | Agent-managed events. The date is a field, earlier dates are kept, and the newest filing wins. A same-day disagreement marks the event *conflicting*, which isn't traded. Only events with an exact date or a window of a quarter or less are tradable. |
 | Document sync | `rag/sync.py` | Loads 10-K/10-Q risk factors, 8-Ks with exhibits, trial records including posted results, and PubMed abstracts, each with its real publication date and each only once. |
@@ -318,7 +318,7 @@ and are enforced for every request by the shared fetcher in
 | SEC EDGAR APIs and filing archives | scraping company or investor-relations websites |
 | ClinicalTrials.gov API v2 | press-release wires, news sites, search engines |
 | NCBI E-utilities (PubMed abstracts) | paid catalyst calendars, or any site whose terms forbid automated access |
-| openFDA (approvals, labels) | anything behind a login or paywall, CAPTCHA bypassing, proxies or IP rotation |
+| openFDA (Drugs@FDA approvals, used by the scout) | anything behind a login or paywall, CAPTCHA bypassing, proxies or IP rotation |
 | Alpaca, with your own paper keys | SEC full-text search (not documented for automated use) |
 
 ### Per-source limits (about half of what each provider allows)
