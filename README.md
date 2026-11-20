@@ -18,8 +18,9 @@ See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the full design and
 | 1 | Data layer (CT.gov, EDGAR, runway, catalysts.csv) | done |
 | 2 | Guardrail rules, approval tokens, brokers, kill-switch, execution | done |
 | 4 | RAG: ontology, ingest, hybrid retrieval, tier/conflict resolution | done |
-| 5 | Agents + Tree of Thoughts + LangGraph supervisor | next |
-| 6–8 | Sell state machine, backtest, Alpaca paper trading | planned |
+| 5 | Agents + Tree of Thoughts + LangGraph supervisor | done |
+| 6 | Sell state machine (deterministic) | next |
+| 7–8 | Backtest, Alpaca paper trading | planned |
 | 3, 9, 10 | Robinhood spike, shadow mode, live pilot (needs your accounts) | last |
 
 ## Setup (Windows PowerShell)
@@ -27,7 +28,7 @@ See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the full design and
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -e ".[dev,rag]"
+pip install -e ".[dev,rag,graph]"
 copy .env.example .env      # then edit .env
 ```
 
@@ -52,6 +53,8 @@ python -m biotradeai rag eval                     # recall/bleed on 30-drug test
 python -m biotradeai rag ingest doc.pdf --ticker ONCO --tier 1 --date 2026-01-05 --url https://... --drug ONC-101
 python -m biotradeai rag query ONCO ONC-101 "hepatic safety signals?"
 python -m biotradeai ontology resolve oncotinib   # list | proposals | propose | approve
+python -m biotradeai evaluate --fixture data\fixtures\scenarios\onco.yaml   # ToT -> risk -> approve
+python -m biotradeai evaluate --fixture data\fixtures\scenarios\onco.yaml --llm ollama:llama3.2:3b
 ```
 
 Quality gates (run before every commit):

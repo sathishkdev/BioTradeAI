@@ -1,0 +1,52 @@
+# $ONCO acceptance fixture (plan Phase 5): cash $40M, burn $10M/quarter -> 12 months.
+# Synthetic company. Scripted LLM replies make the run deterministic offline; run with
+# --llm <spec> to let a real model answer instead.
+run:
+  run_id: fixture-onco
+  ticker: ONCO
+  entity_id: ENT-ONCO-ONC101
+  catalyst_event: phase3_readout
+  catalyst_date: 2027-01-15
+  as_of: 2026-11-20T15:00:00+00:00
+evidence:
+  confidence: 0.88          # what the retriever reported for this bundle
+  sources:
+    - tier: 1
+      published_at: 2026-09-10T00:00:00+00:00
+      url: https://clinicaltrials.gov/study/NCT09990001
+      doc_type: ctgov
+      text: >-
+        ONC-101 Phase 2 (NCT09990001) results posted. The study met its primary endpoint
+        of objective response rate, 41% versus 18% for standard of care. No new safety
+        signals were reported. The Phase 3 trial completed enrollment of 620 patients.
+    - tier: 2
+      published_at: 2026-11-05T00:00:00+00:00
+      url: https://www.sec.gov/Archives/edgar/data/0009990001/onco-10q.htm
+      doc_type: 10-Q
+      text: >-
+        Topline data from the Phase 3 trial of ONC-101 are expected in January 2027.
+        The Phase 3 protocol uses the same primary endpoint and dose as the Phase 2
+        study. Enrollment completed ahead of plan.
+runway:
+  cash: 40000000
+  quarterly_burn: 10000000
+  source_accns: [0009990001-26-000042]
+market: {bid: "9.98", ask: "10.02"}
+portfolio: {equity: "100000", open_tickers: [], existing_value: "0"}
+fake_llm:
+  generator:
+    1:
+      adjustments:
+        - node: success
+          adjustment: 0.15
+          justification: Phase 2 met the same primary endpoint with a large effect size.
+          evidence: [E1, E2]
+        - node: failure
+          adjustment: -0.15
+          justification: Same endpoint and dose as a positive Phase 2 lowers failure risk.
+          evidence: [E1]
+  critic:
+    1:
+      reviews:
+        - {node: success, verdict: accept, reason: E1 reports a met primary endpoint.}
+        - {node: failure, verdict: accept, reason: E2 confirms the same endpoint and dose.}

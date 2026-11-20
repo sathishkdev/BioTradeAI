@@ -1,0 +1,74 @@
+# Base rates that anchor the Tree of Thoughts (plan correction #5).
+# The LLM may move a probability by at most tot.max_prob_adjustment (config) and only
+# with cited evidence. Returns are NEVER set by the LLM; they come from this file.
+#
+# STATUS: seeded by Claude Code on 2026-11-20 for review. Set reviewed: true once a
+# human has checked every number. Until then every run logs a "base rates unreviewed"
+# warning.
+reviewed: false
+
+sources:
+  - id: BIO2021
+    citation: >-
+      BIO, Informa Pharma Intelligence, QLS Advisors. "Clinical Development Success
+      Rates and Contributing Factors 2011-2020", Feb 2021. All indications:
+      Phase III -> NDA/BLA submission 57.8%; NDA/BLA -> approval 90.6%.
+    url: https://go.bio.org/rs/490-EHZ-999/images/ClinicalDevelopmentSuccessRates2011_2020.pdf
+
+# How probabilities were split (ASSUMPTIONS, not from the source):
+# * phase3_readout: success + partial = 57.8% (BIO2021 Phase III transition); the
+#   "partial" share (mixed data that may still support filing) is an assumption.
+# * pdufa: success + partial = 90.6% (BIO2021 NDA/BLA -> approval); "partial"
+#   (approval with a restrictive label or an extended review) is an assumption.
+# * Every expected return below is an ASSUMPTION for review. Leaf return =
+#   product of (1 + step return) along the path, minus 1, computed in code.
+
+events:
+  phase3_readout:
+    description: Pivotal (Phase 3) topline data readout
+    clinical:                      # depth 1: clinical outcome
+      success: {p: 0.500, return: 1.00, description: "primary endpoint met, clean safety"}
+      partial: {p: 0.078, return: 0.00, description: mixed or marginal data}
+      failure: {p: 0.422, return: -0.60, description: primary endpoint not met or safety stop}
+    regulatory:                    # depth 2: regulatory reaction, conditional on depth 1
+      success:
+        clean_path:          {p: 0.85, return: 0.00, description: filing on plan}
+        extra_requirements:  {p: 0.15, return: -0.10, description: FDA asks for more data}
+      partial:
+        path_to_filing:      {p: 0.40, return: 0.05, description: FDA open to a filing}
+        additional_trial:    {p: 0.60, return: -0.15, description: another trial needed}
+      failure:
+        program_continues:   {p: 0.40, return: 0.05, description: subgroup or new trial}
+        program_discontinued: {p: 0.60, return: -0.10, description: program dropped}
+  pdufa:
+    description: FDA action (PDUFA) date
+    clinical:
+      success: {p: 0.850, return: 0.30, description: approved with the expected label}
+      partial: {p: 0.056, return: -0.10, description: restrictive label or review extension}
+      failure: {p: 0.094, return: -0.50, description: complete response letter}
+    regulatory:
+      success:
+        launch_on_track:     {p: 0.85, return: 0.00, description: commercial launch on plan}
+        launch_delayed:      {p: 0.15, return: -0.10, description: supply or label delays}
+      partial:
+        label_workable:      {p: 0.60, return: 0.05, description: label still commercial}
+        label_limiting:      {p: 0.40, return: -0.15, description: small addressable market}
+      failure:
+        resubmission:        {p: 0.50, return: 0.05, description: "fixable CRL, resubmit"}
+        abandoned:           {p: 0.50, return: -0.15, description: major deficiency}
+
+# depth 3: financing / dilution, same for every event. Bucket chosen in code by runway
+# months: the first bucket whose runway_below is greater than the runway applies.
+financing:
+  - runway_below: 12
+    outcomes:
+      no_raise:       {p: 0.30, return: 0.00, description: no equity raise before catalyst}
+      dilutive_raise: {p: 0.70, return: -0.20, description: equity offering}
+  - runway_below: 24
+    outcomes:
+      no_raise:       {p: 0.60, return: 0.00, description: no equity raise before catalyst}
+      dilutive_raise: {p: 0.40, return: -0.20, description: equity offering}
+  - runway_below: null             # null = no upper bound
+    outcomes:
+      no_raise:       {p: 0.85, return: 0.00, description: no equity raise before catalyst}
+      dilutive_raise: {p: 0.15, return: -0.20, description: equity offering}

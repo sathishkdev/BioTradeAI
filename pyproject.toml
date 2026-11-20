@@ -19,8 +19,7 @@ dependencies = [
 [project.optional-dependencies]
 # LLM providers are optional so you only install what you use.
 anthropic = ["anthropic>=0.40"]
-# Later phases (installed when we reach them):
-graph = ["langgraph>=0.2", "langgraph-checkpoint-sqlite>=2.0"]
+graph = ["langgraph>=1.0", "langgraph-checkpoint-sqlite>=3.0"]
 rag = ["chromadb>=1.0", "sentence-transformers>=3.0", "pypdf>=4.0"]
 brokers = ["alpaca-py>=0.30", "mcp>=1.2"]
 dev = [
@@ -41,6 +40,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra -m 'not integration'"
+filterwarnings = ["ignore::DeprecationWarning:langsmith.*"]
 markers = [
     "integration: needs network or a running local service (Ollama, broker sandbox). Skipped by default; run with -m integration",
 ]

@@ -1,0 +1,37 @@
+# Dilution trap: cash $2.5M, burn $7.5M/quarter -> 1 month of runway.
+# Fatal-flaw prune collapses success/partial into the residual; Risk Agent vetoes -> SKIP.
+run:
+  run_id: fixture-dilution
+  ticker: DLTN
+  entity_id: ENT-DLTN-DL7
+  catalyst_event: phase3_readout
+  catalyst_date: 2027-02-01
+  as_of: 2026-11-20T15:00:00+00:00
+evidence:
+  confidence: 0.85
+  sources:
+    - tier: 1
+      published_at: 2026-09-15T00:00:00+00:00
+      url: https://clinicaltrials.gov/study/NCT09990003
+      doc_type: ctgov
+      text: >-
+        DL-7 Phase 2 met its primary endpoint. The Phase 3 trial is fully enrolled.
+    - tier: 2
+      published_at: 2026-11-10T00:00:00+00:00
+      url: https://www.sec.gov/Archives/edgar/data/0009990003/dltn-10q.htm
+      doc_type: 10-Q
+      text: >-
+        Substantial doubt exists about our ability to continue as a going concern. Cash
+        and cash equivalents were $2.5 million at September 30, 2026.
+runway: {cash: 2500000, quarterly_burn: 7500000}
+market: {bid: "1.21", ask: "1.22"}
+portfolio: {equity: "100000", open_tickers: [], existing_value: "0"}
+fake_llm:
+  generator:
+    1:
+      adjustments:
+        - {node: success, adjustment: 0.10, justification: Phase 2 met its primary endpoint., evidence: [E1]}
+  critic:
+    1:
+      reviews:
+        - {node: success, verdict: accept, reason: E1 supports it.}

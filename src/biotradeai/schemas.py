@@ -105,6 +105,9 @@ class ToTNode(_Contract):
     base_rate: Probability
     adjustment: float = Field(ge=-1.0, le=1.0)
     probability: Probability  # conditional on the parent
+    # Return contributed by this step (from data/base_rates.yaml, never from the LLM).
+    # Leaf return = product of (1 + step_return) along the path, minus 1.
+    step_return: Return
     justification: str
     evidence_ids: list[Sha256] = Field(default_factory=list)
     pruned: bool = False
@@ -249,3 +252,55 @@ class CatalystState(_Contract):
     decision: Decision | None = None
     veto_reasons: list[str] = Field(default_factory=list)
     staged_order: StagedOrder | None = None
+
+
+# --------------------------------------------------------------------------- agent inputs
+
+
+class RunwaySnapshot(_Contract):
+    """Runway computed in code (``data/runway.py``) and handed to the agents."""
+
+    months: float = Field(ge=0.0)
+    cash: Decimal = Field(ge=Decimal(0))
+    quarterly_burn: Decimal = Field(ge=Decimal(0))
+    observed_at: AwareDatetime
+    source_accns: list[str] = Field(default_factory=list)
+
+
+class MarketSnapshot(_Contract):
+    bid: Price
+    ask: Price
+    observed_at: AwareDatetime
+
+
+class PortfolioSnapshot(_Contract):
+    """Account facts with identifiers already stripped (no account numbers)."""
+
+    equity: Decimal = Field(ge=Decimal(0))
+    open_tickers: list[Ticker] = Field(default_factory=list)
+    existing_value: Decimal = Field(ge=Decimal(0))  # current exposure to this ticker
+    observed_at: AwareDatetime
+
+
+class ResearchInputs(_Contract):
+    """Everything the buy graph needs, gathered by the data layer before the graph runs.
+
+    ``excerpts`` maps a source sha256 to a short text excerpt shown to the LLM.
+    ``claims`` holds the resolved claims (key -> value) from ``rag.retrieve``.
+    """
+
+    evidence: EvidenceBundle
+    evidence_observed_at: AwareDatetime
+    excerpts: dict[Sha256, str] = Field(default_factory=dict)
+    claims: dict[str, str] = Field(default_factory=dict)
+    runway: RunwaySnapshot
+    market: MarketSnapshot
+    portfolio: PortfolioSnapshot
+
+    @model_validator(mode="after")
+    def _excerpts_belong_to_bundle(self) -> Self:
+        known = {s.sha256 for s in self.evidence.sources}
+        stray = set(self.excerpts) - known
+        if stray:
+            raise ValueError(f"excerpts for unknown sources: {sorted(stray)[:3]}")
+        return self

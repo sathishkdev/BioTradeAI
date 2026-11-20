@@ -32,6 +32,7 @@ tot:
   residual_scenario_return: -0.70   # PLACEHOLDER, set deliberately before Phase 5
   max_prob_adjustment: 0.15
   prob_sum_tolerance: 0.001
+  ev_match_tolerance: 0.0001        # Research vs Risk EV; a bigger gap blocks the trade
 sell:
   profit_target_pct: 0.30
   scale_out_fraction: 0.50

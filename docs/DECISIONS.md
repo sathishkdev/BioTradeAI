@@ -177,3 +177,84 @@ explicitly. Chunks that name several drugs are stored once per drug.
 `rag` extra: chromadb (vector store), sentence-transformers (local embeddings), pypdf
 (FDA briefing PDFs). Ollama embeddings use plain httpx. PubMed XML is parsed with the
 stdlib ElementTree from the trusted NCBI host; modern expat refuses entity-expansion bombs.
+
+## D-033 — Phase 5 inputs: defaults used, all open for review (2026-11-20)
+The user said to start Phase 5 without choosing the three open inputs, so these
+defaults were used. Each is easy to change:
+* Research model: any spec via `--llm`, `BIOTRADEAI_LLM_RESEARCH`, `BIOTRADEAI_LLM_CRITIC`.
+  Tested with scripted replies (offline) and with `ollama:llama3.2:3b`. The code default
+  stays `anthropic:claude-sonnet-5-5`.
+* `tot.residual_scenario_return` stays at the -0.70 PLACEHOLDER.
+* `data/base_rates.yaml` is seeded from BIO/Informa/QLS 2021 (Phase III -> NDA/BLA 57.8%,
+  NDA/BLA -> approval 90.6%) and has `reviewed: false`. How partial outcomes are split
+  off, and every return figure, are labelled ASSUMPTIONS in the file. Until a human sets
+  `reviewed: true`, every run logs a warning.
+
+## D-034 — ToT shape and bounded adjustments (2026-11-20)
+Depth 1 is the clinical outcome (success/partial/failure, always all three). Depth 2 is
+the regulatory reaction given that outcome. Depth 3 is financing/dilution, bucketed by
+runway computed in code. The LLM may propose an adjustment of up to +/-
+`tot.max_prob_adjustment` per outcome. Code clips each proposal to that band. It then
+applies one common shift, clipped to each outcome's box, so siblings sum to exactly 1
+(`agents/tot.bounded_projection`). The base rate, final probability, adjustment,
+justification and evidence hashes are logged for every node.
+
+## D-035 — Returns come from base_rates.yaml, never from the LLM (2026-11-20)
+Each node carries a `step_return` from the base-rate file. A leaf's return is the
+product of (1 + step) along its path, minus 1, floored at -100%. The LLM prompt contains
+no return figures (a test enforces this). MUST #5 covers EV inputs as well as EV itself.
+
+## D-036 — Beam-cut branches also go into the residual (2026-11-20)
+Plan correction #2 says pruning only saves compute. A depth-1 outcome outside the beam
+(width 2) is therefore not dropped. It is collapsed into the single residual scenario at
+`residual_scenario_return`, together with fatal-flaw prunes, so EV always covers 100%
+of the probability mass.
+
+## D-037 — Fatal flaws collapse every non-failure branch (2026-11-20)
+An active clinical hold (resolved RAG claim) or runway below `fatal_runway_months`
+(strictly below, as in Phase 2) marks success and partial as pruned with the reason
+stated. Only the failure branch is kept and expanded.
+
+## D-038 — The Critic can only make the tree more conservative (2026-11-20)
+* Deterministic groundedness rule: an adjustment that cites no valid evidence id is
+  rejected without asking the LLM. Unknown evidence ids are dropped; the LLM sees short
+  ids (E1..En) that map back to sha256 hashes in code.
+* The critic LLM says accept or reject for each adjustment. A missing verdict, an
+  unparseable reply or an LLM error all count as reject.
+* An unparseable generator reply means base rates are used.
+So a weak or failing model degrades the tree to base rates. It never makes it bolder.
+
+## D-039 — Risk Agent is fully deterministic (2026-11-20)
+The plan says "mostly deterministic". This implementation uses no LLM at all.
+* EV is recomputed with `rules.compute_ev` over the flat ScenarioSet. The Research
+  Agent computes EV with a separate depth-first walk of the tree (`tot.tree_ev`).
+* A gap larger than the new config key `tot.ev_match_tolerance` (0.0001) is logged as
+  `risk.ev_mismatch` and vetoes the trade.
+* Extra checks beyond the plan's list: evidence status, room under the position cap at
+  a limit price equal to the ask, TTL on quote/runway/portfolio/evidence, and that the
+  catalyst date has not passed.
+
+## D-040 — Supervisor on LangGraph 1.x (2026-11-20)
+Graph state is a TypedDict of JSON-serialised contracts (CatalystState,
+ResearchInputs, ToTNode). Every node re-validates them through Pydantic before acting
+and before returning, so a transition cannot emit an invalid state.
+* INCONCLUSIVE evidence routes straight to human review before any LLM call.
+* HITL uses `interrupt()`. The CLI issues the HMAC approval token and resumes the
+  graph with it.
+* Execution is an injected callable wired to `brokers/execution.py`; the graph package
+  never imports `biotradeai.brokers`.
+* Checkpoints live in `data/checkpoints.db` (git-ignored). A run waiting for approval
+  survives a restart (tested).
+
+## D-041 — New dependencies: langgraph, langgraph-checkpoint-sqlite (2026-11-20)
+`graph` extra: `langgraph>=1.0` (state machine, interrupt) and
+`langgraph-checkpoint-sqlite>=3.0` (durable checkpoints). LangGraph pulls in langsmith.
+LangSmith tracing is OFF unless `LANGSMITH_TRACING` / `LANGCHAIN_TRACING_V2` is set.
+Do not set those: they would send prompts to an external service.
+
+## D-042 — `evaluate` on fixtures is a dry run at simulated time (2026-11-20)
+`data/fixtures/scenarios/*.yaml` runs the real claim extraction, conflict resolution
+and runway math. The run uses an in-memory FakeBroker and clock = the fixture's
+`as_of`. Building inputs from live retrieval, EDGAR and broker quotes
+(`biotradeai/inputs.py`) is written, but it is wired into a CLI command in Phase 8, once
+Alpaca keys exist.

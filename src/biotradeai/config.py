@@ -77,6 +77,8 @@ class ToTConfig(_Strict):
     residual_scenario_return: float = Field(ge=-1.0, le=0.0)
     max_prob_adjustment: float = Field(gt=0.0, le=0.5)
     prob_sum_tolerance: float = Field(gt=0.0, le=0.01)
+    # Research EV vs Risk EV: a larger gap is logged and blocks the trade.
+    ev_match_tolerance: float = Field(gt=0.0, le=0.01)
 
 
 class SellConfig(_Strict):

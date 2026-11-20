@@ -125,7 +125,8 @@ def test_inconclusive_needs_reason() -> None:
 def test_pruned_node_needs_reason() -> None:
     with pytest.raises(ValidationError):
         ToTNode(node_id="n1", parent_id=None, depth=1, label="fail", base_rate=0.3,
-                adjustment=0.0, probability=0.3, justification="", pruned=True)
+                adjustment=0.0, probability=0.3, step_return=-0.5, justification="",
+                pruned=True)
 
 
 # ------------------------------------------------------------------ orders / tokens

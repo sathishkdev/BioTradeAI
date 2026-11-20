@@ -1,0 +1,29 @@
+# Conflict fixture: CT.gov (Tier 1) says the clinical hold is active, a NEWER 10-Q
+# (Tier 2) says it was lifted. Unresolved Tier-1 vs Tier-2 conflict -> INCONCLUSIVE.
+run:
+  run_id: fixture-conflict
+  ticker: CNFL
+  entity_id: ENT-CNFL-CX22
+  catalyst_event: phase3_readout
+  catalyst_date: 2027-03-01
+  as_of: 2026-11-20T15:00:00+00:00
+evidence:
+  confidence: 0.90
+  sources:
+    - tier: 1
+      published_at: 2026-08-01T00:00:00+00:00
+      url: https://clinicaltrials.gov/study/NCT09990002
+      doc_type: ctgov
+      text: >-
+        CX-22 Phase 3 status update. The FDA placed the study on a full clinical hold
+        after a hepatic adverse event. The clinical hold remains in place.
+    - tier: 2
+      published_at: 2026-10-20T00:00:00+00:00
+      url: https://www.sec.gov/Archives/edgar/data/0009990002/cnfl-10q.htm
+      doc_type: 10-Q
+      text: >-
+        In September 2026 the FDA lifted the clinical hold on the CX-22 Phase 3 study
+        and dosing resumed.
+runway: {cash: 90000000, quarterly_burn: 9000000}
+market: {bid: "4.99", ask: "5.01"}
+portfolio: {equity: "100000", open_tickers: [], existing_value: "0"}
