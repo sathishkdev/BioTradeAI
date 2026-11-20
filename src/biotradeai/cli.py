@@ -25,7 +25,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from biotradeai import cli_agents, cli_rag, cli_trading
+from biotradeai import cli_agents, cli_paper, cli_rag, cli_trading
 from biotradeai.agents.base_rates import BaseRateError
 from biotradeai.agents.llm import LLMError, LLMMessage, make_llm_client, resolve_spec
 from biotradeai.brokers.approval import ApprovalError
@@ -35,6 +35,7 @@ from biotradeai.data.catalysts import CatalystFileError, load_catalysts
 from biotradeai.data.clinicaltrials import ClinicalTrialsClient, parse_study
 from biotradeai.data.edgar import EdgarClient, EdgarConfigError, parse_company_facts
 from biotradeai.data.http import FetchError
+from biotradeai.data.outcomes import OutcomeFileError
 from biotradeai.data.runway import RunwayUnavailableError, compute_runway
 from biotradeai.guardrails import rules
 from biotradeai.paths import REPO_ROOT
@@ -160,6 +161,7 @@ def build_parser() -> argparse.ArgumentParser:
     cli_trading.register(sub)
     cli_rag.register(sub)
     cli_agents.register(sub)
+    cli_paper.register(sub)
     return p
 
 
@@ -170,7 +172,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         rc: int = args.fn(args)
     except (ConfigError, LLMError, EdgarConfigError, FetchError, RunwayUnavailableError,
             CatalystFileError, KeyError, BrokerError, ApprovalError, PermissionError,
-            OntologyError, EmbeddingError, BaseRateError) as exc:
+            OntologyError, EmbeddingError, BaseRateError, OutcomeFileError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     return rc

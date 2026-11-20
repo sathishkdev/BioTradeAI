@@ -21,7 +21,7 @@ See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the full design and
 | 5 | Agents + Tree of Thoughts + LangGraph supervisor | done |
 | 6 | Sell state machine (deterministic), EDGAR/CT.gov pollers | done |
 | 7 | Point-in-time backtest, metrics, reports | done |
-| 8 | Alpaca paper trading (needs your Alpaca paper keys) | next |
+| 8 | Alpaca paper trading: runner, daily review, live-gate counter (run needs your keys) | built |
 | 3, 9, 10 | Robinhood spike, shadow mode, live pilot (needs your accounts) | last |
 
 ## Setup (Windows PowerShell)
@@ -59,6 +59,10 @@ python -m biotradeai evaluate --fixture data\fixtures\scenarios\onco.yaml --llm 
 python -m biotradeai sell-replay                  # replay all sell-trigger fixtures
 python -m biotradeai backtest                     # base-rate baseline -> reports/
 python -m biotradeai backtest --llm ollama:llama3.2:3b
+python -m biotradeai paper run                    # one cycle (needs keys); approve prompts
+python -m biotradeai paper run --broker fake --auto-reject   # dry run
+python -m biotradeai paper review                 # today's audit summary
+python -m biotradeai paper gate                   # paper days / breaches for live gate
 ```
 
 Quality gates (run before every commit):

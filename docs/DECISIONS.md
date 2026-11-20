@@ -361,3 +361,48 @@ and labelled it "rejected", which was misleading.
 ## D-053 — No new dependencies for Phase 7 (2026-11-20)
 The backtest uses chromadb's in-memory client, the existing embedders and LangGraph's
 in-memory checkpointer. Reports go to `reports/` (git-ignored) as Markdown + JSON.
+
+## D-054 — Phase 8 is built and tested without the user's keys (2026-11-20)
+The user will add keys later. Alpaca has no public test keys, and creating an account
+is the user's step, so no "temporary keys" were used.
+* The real `AlpacaBroker` code is tested against a mock Alpaca server (MockTransport)
+  using dummy key strings. The test checks the exact POST body (limit, DAY, no
+  extended hours), and checks that the account number and secret never reach the
+  audit log.
+* Everything else runs against FakeBroker.
+* The 8-12 week paper run itself starts once `.env` has `ALPACA_API_KEY/SECRET`,
+  `APPROVAL_HMAC_SECRET` and `SEC_USER_AGENT`, and `data/catalysts.csv` has tickers.
+
+## D-055 — Paper cycle design (2026-11-20)
+* `paper run` does one cycle and exits; schedule it with Task Scheduler or cron. No
+  daemon. Exits run before entries.
+* An unfilled open BUY order counts as exposure (concurrency and position cap), so
+  re-running a cycle cannot stack orders.
+* Each ticker is evaluated at most once per day; the date comes from the cycle's own
+  clock in the run id.
+* After every placed buy, an independent post-trade check runs. A breach writes
+  `guardrail.breach` and trips the kill-switch.
+
+## D-056 — Exits need the same typed human approval as entries (2026-11-20)
+Open question from Phase 6. The default is the stricter option: every exit goes through
+an approval token and `execution.py`, so the agent never sells on its own. The
+consequences:
+* A tripped kill-switch also blocks exits (the Phase 2 behaviour).
+* An exit that is rejected or doesn't fill is flagged every cycle afterwards
+  (`paper.exit_unfilled`) for manual review. It is not automatically re-submitted.
+Revisit if urgent exits (CRL, dilution) should skip the prompt.
+
+## D-057 — Readout outcomes come from a human-curated data/outcomes.csv (2026-11-20)
+Columns: ticker, drug, date, result (positive|negative|crl|mixed), source_url. Like
+catalysts.csv, code never infers what happened at a readout. An outcome is applied to
+a position if its date falls between 14 days before the listed catalyst date and today.
+A later catalysts.csv row for a held ticker is fed in as `catalyst_scheduled`, which
+triggers "never hold between readouts".
+
+## D-058 — Live gate, paper condition (2026-11-20)
+`paper gate` counts UTC days with at least one completed `paper.cycle_done` and all
+`guardrail.breach` events. It is eligible when days >= `live_gate.min_paper_days` (90)
+and breaches == 0. `paper review` summarises one day: decisions, orders placed and
+rejected, exits, skips, breaches, kill-switch events and the audit hash chain.
+Limitation: time-stop polling needs an NCT id per position, which catalysts.csv does
+not have yet, so the CT.gov date poller is not wired into the paper cycle.
