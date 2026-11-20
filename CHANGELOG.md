@@ -54,6 +54,9 @@ owner's account.
 - Docs: README with architecture diagrams, step-by-step `docs/SETUP.md`, decisions log.
 - CI: ruff, strict mypy and offline pytest on Linux and Windows.
 
+### Added later
+- MIT license.
+
 ### Not yet
 - Phases 3, 9 and 10 (Robinhood spike, shadow mode, live pilot).
 - A backtest on real historical catalysts, with a stronger model.

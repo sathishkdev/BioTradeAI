@@ -509,3 +509,7 @@ real predictive skill.
 | — | Network guardrails: allowlist, polite rates, budgets, breaker, pacing | done |
 | — | Watchlist scout, approval cards, automatic document sync and follow loop | done |
 | 3, 9, 10 | Robinhood spike, shadow mode, live pilot | last (needs your Robinhood account) |
+
+## License
+
+[MIT](LICENSE) © 2026 sathishkdev. Provided "as is", without warranty: decision support only, not financial advice.

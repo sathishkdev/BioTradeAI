@@ -10,4 +10,8 @@
 #     ticker: ONCO
 #     names: [ONC-101, oncotinib, Oncora]
 #     previous_codes: [XYZ-77]
-entities: {}
+entities:
+  ENT-APMD-AD109:
+    ticker: APMD
+    names:
+    - AD109
