@@ -165,16 +165,17 @@ def test_event_life(tmp_path: Path, store: SQLiteStore) -> None:
     (Precision.DAY, date(2027, 3, 15), True), (Precision.QUARTER, date(2027, 3, 31), True),
     (Precision.HALF, date(2027, 6, 30), False), (Precision.YEAR, date(2027, 12, 31), False),
     (Precision.DAY, date(2026, 11, 1), False)])
+@pytest.mark.parametrize("event", ["PHASE3_READOUT", "PHASE2_READOUT"])
 def test_tradable_dates(tmp_path: Path, store: SQLiteStore, prec: Precision, end: date,
-                        ok: bool) -> None:
+                        ok: bool, event: str) -> None:
     _, e = _approved(tmp_path)
-    store.put_event({"entity_id": e.entity_id, "event_type": "PHASE3_READOUT", "trial_id": "",
+    store.put_event({"entity_id": e.entity_id, "event_type": event, "trial_id": "",
                      "cik": CIK, "ticker": "ONCO", "drug": "ONC-101",
                      "date": end.isoformat() if prec is Precision.DAY else None,
                      "window_start": end.isoformat(), "window_end": end.isoformat(),
                      "precision": prec.value, "status": "upcoming", "outcome": None,
                      "source_url": "u", "source_sentence": "s", "source_filed": "2026-11-01"})
-    ev = store.get_event(e.entity_id, "PHASE3_READOUT") or {}
+    ev = store.get_event(e.entity_id, event) or {}
     assert (tradable_date(ev, TODAY) is not None) is ok
 
 
@@ -240,6 +241,7 @@ class Mock:
         self.facts = json.loads((REPO_ROOT / "data" / "fixtures" / "edgar" / "companyfacts" /
                                  "ONCO.json").read_text(encoding="utf-8"))
         self.paths: list[str] = []
+        self.ct_queries: list[str] = []
         self.recent: dict[str, list[str]] = {k: [] for k in (
             "accessionNumber", "form", "filingDate", "reportDate", "primaryDocument")}
 
@@ -260,6 +262,7 @@ class Mock:
         self.paths.append(f"{req.url.host}{p}")
         if req.url.host == "clinicaltrials.gov":
             if p.endswith("/studies"):
+                self.ct_queries.append(req.url.params.get("filter.advanced", ""))
                 return httpx.Response(200, json={"studies": [self.study]})
             return httpx.Response(200, json=self.study)
         if p.startswith("/Archives/edgar/daily-index/"):
@@ -301,6 +304,31 @@ def _with_8k(mock: Mock) -> None:
         ("8-K", "CAR CO", "0001234567", "20261119",
          "edgar/data/1234567/0001234567-26-000001.txt")])
     mock.archive["/Archives/edgar/data/9000001/0009000001-26-000101.txt"] = EIGHT_K
+
+
+def test_scout_queries_phase2_and_phase3_once_per_trial(tmp_path: Path, store: SQLiteStore,
+                                                         cfg: GuardrailsConfig) -> None:
+    mock = Mock()  # every query returns the same Phase 3 trial
+    wl = Watchlist(tmp_path / "wl.yaml")
+    rep = _scout(mock, store, wl, cfg).run()
+    assert [q.split(" AND ")[0] for q in mock.ct_queries] == ["AREA[Phase]PHASE3",
+                                                              "AREA[Phase]PHASE2"]
+    assert rep.trials_seen == 1  # seen by both queries, counted and carded once
+    trials = wl.get("ONCO:ONC-101").card["drug"]["trials"]
+    assert [t["nct"] for t in trials] == ["NCT09000001"] and trials[0]["phase"] == "PHASE3"
+
+
+def test_scout_skips_phase1_2_and_tags_phase2(tmp_path: Path, store: SQLiteStore,
+                                              cfg: GuardrailsConfig) -> None:
+    mock = Mock()
+    mock.study["protocolSection"]["designModule"]["phases"] = ["PHASE1", "PHASE2"]
+    rep = _scout(mock, store, Watchlist(tmp_path / "wl.yaml"), cfg).run()
+    assert rep.trials_seen == 1 and rep.proposed == []
+    mock2 = Mock()
+    mock2.study["protocolSection"]["designModule"]["phases"] = ["PHASE2"]
+    wl = Watchlist(tmp_path / "wl2.yaml")
+    _scout(mock2, SQLiteStore(tmp_path / "s2.db"), wl, cfg).run()
+    assert wl.get("ONCO:ONC-101").card["drug"]["trials"][0]["phase"] == "PHASE2"
 
 
 def test_company_directory_caches(store: SQLiteStore) -> None:

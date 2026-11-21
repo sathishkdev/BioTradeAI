@@ -12,12 +12,18 @@ sources:
     citation: >-
       BIO, Informa Pharma Intelligence, QLS Advisors. "Clinical Development Success
       Rates and Contributing Factors 2011-2020", Feb 2021. All indications:
-      Phase III -> NDA/BLA submission 57.8%; NDA/BLA -> approval 90.6%.
+      Phase II -> Phase III 28.9%; Phase III -> NDA/BLA submission 57.8%;
+      NDA/BLA -> approval 90.6%.
     url: https://go.bio.org/rs/490-EHZ-999/images/ClinicalDevelopmentSuccessRates2011_2020.pdf
 
 # How probabilities were split (ASSUMPTIONS, not from the source):
 # * phase3_readout: success + partial = 57.8% (BIO2021 Phase III transition); the
 #   "partial" share (mixed data that may still support filing) is an assumption.
+# * phase2_readout: success + partial = 28.9% (BIO2021 Phase II -> III transition).
+#   The transition rate also counts programs dropped for business reasons, so it is
+#   a conservative anchor for "topline data positive". The partial share, the
+#   larger success return (small caps re-rate more on proof of concept) and the
+#   depth-2 table (path to Phase 3 instead of FDA review) are assumptions.
 # * pdufa: success + partial = 90.6% (BIO2021 NDA/BLA -> approval); "partial"
 #   (approval with a restrictive label or an extended review) is an assumption.
 # * Every expected return below is an ASSUMPTION for review. Leaf return =
@@ -40,6 +46,22 @@ events:
       failure:
         program_continues:   {p: 0.40, return: 0.05, description: subgroup or new trial}
         program_discontinued: {p: 0.60, return: -0.10, description: program dropped}
+  phase2_readout:
+    description: Phase 2 topline data readout (Phase 2b/2; Phase 2/3 counts as Phase 3)
+    clinical:
+      success: {p: 0.240, return: 1.50, description: "primary endpoint met, clean safety"}
+      partial: {p: 0.049, return: -0.15, description: mixed data or a subgroup-only signal}
+      failure: {p: 0.711, return: -0.60, description: primary endpoint not met or safety stop}
+    regulatory:                    # depth 2: path to Phase 3, conditional on depth 1
+      success:
+        phase3_on_plan:      {p: 0.80, return: 0.00, description: end-of-Phase-2 meeting supports the Phase 3 plan}
+        phase3_redesign:     {p: 0.20, return: -0.10, description: FDA asks for a larger or different Phase 3}
+      partial:
+        phase3_still_planned: {p: 0.35, return: 0.05, description: company advances with a refined design}
+        another_phase2:      {p: 0.65, return: -0.15, description: another Phase 2 needed first}
+      failure:
+        program_continues:   {p: 0.30, return: 0.05, description: subgroup or new trial}
+        program_discontinued: {p: 0.70, return: -0.10, description: program dropped}
   pdufa:
     description: FDA action (PDUFA) date
     clinical:

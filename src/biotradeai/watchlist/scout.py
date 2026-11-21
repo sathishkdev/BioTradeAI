@@ -26,7 +26,7 @@ from typing import Any
 
 from biotradeai.brokers.base import Broker
 from biotradeai.config import GuardrailsConfig
-from biotradeai.data.clinicaltrials import ClinicalTrialsClient
+from biotradeai.data.clinicaltrials import ClinicalTrialsClient, TrialRecord
 from biotradeai.data.edgar import EdgarClient
 from biotradeai.data.http import FetchError
 from biotradeai.data.openfda import OpenFDAClient
@@ -54,10 +54,11 @@ from biotradeai.watchlist.model import (
 
 MIN_LEAD_DAYS = 14
 MAX_LEAD_DAYS = 365
-CT_WINDOW = (60, 365)  # days ahead for Phase 3 primary completion
+CT_WINDOW = (60, 365)  # days ahead for Phase 2/3 primary completion
+CT_PHASES = ("PHASE3", "PHASE2")  # Phase 1 and Phase 1/2 trials are not scouted
 INITIAL_LOOKBACK_DAYS = 7
 MAX_LOOKBACK_DAYS = 14
-LARGE_SPONSOR_TRIALS = 10  # many Phase 3s = diversified; one readout rarely moves it
+LARGE_SPONSOR_TRIALS = 10  # many Phase 2/3s = diversified; one readout rarely moves it
 # Drug code with a letter prefix of 3+ letters, e.g. VRDN-003 / ABC123 (prefix = group 1).
 LICENSE_CODE = re.compile(r"^([A-Z]{3,6})-?\d{2,6}[A-Z]?$")
 # $5B (user choice 2026-11-20): above this one catalyst rarely moves the stock.
@@ -95,6 +96,11 @@ def clean_names(raw: list[str]) -> list[str]:
             if drug_key(name) not in {drug_key(x) for x in out}:
                 out.append(name)
     return out
+
+
+def trial_phase(phases: tuple[str, ...]) -> str:
+    """Highest phase of a trial; a Phase 2/3 trial counts as Phase 3."""
+    return "PHASE3" if "PHASE3" in phases else "PHASE2"
 
 
 def norm_company(name: str) -> str:
@@ -223,43 +229,59 @@ class Scout:
     def scan_ctgov(self, rep: ScoutReport) -> None:
         lo = self.today + timedelta(days=CT_WINDOW[0])
         hi = self.today + timedelta(days=CT_WINDOW[1])
-        adv = (f"AREA[Phase]PHASE3 AND AREA[LeadSponsorClass]INDUSTRY AND "
-               f"AREA[PrimaryCompletionDate]RANGE[{lo.isoformat()},{hi.isoformat()}]")
         by_sponsor: dict[str, list[dict[str, Any]]] = {}
+        seen: set[str] = set()
+        # One query per phase keeps the verified single-phase Essie syntax. A Phase 2/3
+        # trial matches both and is kept once. Phase 1/2 trials are early-stage: skipped.
         try:
-            for rec in self.ctgov.search(advanced=adv, statuses=(
-                    "RECRUITING", "ACTIVE_NOT_RECRUITING", "ENROLLING_BY_INVITATION"),
-                    page_size=100, max_pages=10):
-                rep.trials_seen += 1
-                ps = rec.raw.get("protocolSection") or {}
-                ivs = [i for i in
-                       (ps.get("armsInterventionsModule") or {}).get("interventions") or []
-                       if str(i.get("type", "")).upper() in ("DRUG", "BIOLOGICAL", "GENETIC",
-                                                               "COMBINATION_PRODUCT")
-                       and i.get("name") and not _NON_DRUG.search(i["name"])]
-                if not ivs:
-                    continue
-                # The first listed intervention is the investigational drug; the others are
-                # usually comparators or combination partners (often other companies' drugs).
-                drugs = clean_names([str(ivs[0]["name"]),
-                                     *[str(n) for n in ivs[0].get("otherNames") or []]])
-                if not drugs:
-                    continue
-                partners = [str(i["name"]) for i in ivs[1:4]]
-                endpoint = ((ps.get("outcomesModule") or {}).get("primaryOutcomes")
-                            or [{}])[0].get("measure", "")
-                enroll = ((ps.get("designModule") or {}).get("enrollmentInfo") or {}).get(
-                    "count")
-                by_sponsor.setdefault(rec.sponsor, []).append({
-                    "nct": rec.nct_id, "title": rec.title[:200], "status": rec.overall_status,
-                    "drugs": drugs[:4], "with": partners, "endpoint": str(endpoint)[:200],
-                    "enrollment": enroll,
-                    "conditions": list(rec.conditions[:3]),
-                    "primary_completion": rec.primary_completion.raw
-                    if rec.primary_completion else None})
+            for phase in CT_PHASES:
+                adv = (f"AREA[Phase]{phase} AND AREA[LeadSponsorClass]INDUSTRY AND "
+                       f"AREA[PrimaryCompletionDate]RANGE[{lo.isoformat()},{hi.isoformat()}]")
+                for rec in self.ctgov.search(advanced=adv, statuses=(
+                        "RECRUITING", "ACTIVE_NOT_RECRUITING", "ENROLLING_BY_INVITATION"),
+                        page_size=100, max_pages=10):
+                    if rec.nct_id in seen:
+                        continue
+                    seen.add(rec.nct_id)
+                    rep.trials_seen += 1
+                    if "PHASE1" in rec.phases:
+                        continue
+                    self._add_trial(rec, by_sponsor)
         except FetchError as exc:
             rep.errors.append(f"ctgov search: {exc}"[:200])
             return
+        self._match_sponsors(rep, by_sponsor)
+
+    @staticmethod
+    def _add_trial(rec: TrialRecord, by_sponsor: dict[str, list[dict[str, Any]]]) -> None:
+        ps = rec.raw.get("protocolSection") or {}
+        ivs = [i for i in (ps.get("armsInterventionsModule") or {}).get("interventions") or []
+               if str(i.get("type", "")).upper() in ("DRUG", "BIOLOGICAL", "GENETIC",
+                                                       "COMBINATION_PRODUCT")
+               and i.get("name") and not _NON_DRUG.search(i["name"])]
+        if not ivs:
+            return
+        # The first listed intervention is the investigational drug; the others are
+        # usually comparators or combination partners (often other companies' drugs).
+        drugs = clean_names([str(ivs[0]["name"]),
+                             *[str(n) for n in ivs[0].get("otherNames") or []]])
+        if not drugs:
+            return
+        partners = [str(i["name"]) for i in ivs[1:4]]
+        endpoint = ((ps.get("outcomesModule") or {}).get("primaryOutcomes")
+                    or [{}])[0].get("measure", "")
+        enroll = ((ps.get("designModule") or {}).get("enrollmentInfo") or {}).get("count")
+        by_sponsor.setdefault(rec.sponsor, []).append({
+            "nct": rec.nct_id, "title": rec.title[:200], "status": rec.overall_status,
+            "phase": trial_phase(rec.phases),
+            "drugs": drugs[:4], "with": partners, "endpoint": str(endpoint)[:200],
+            "enrollment": enroll,
+            "conditions": list(rec.conditions[:3]),
+            "primary_completion": rec.primary_completion.raw
+            if rec.primary_completion else None})
+
+    def _match_sponsors(self, rep: ScoutReport,
+                        by_sponsor: dict[str, list[dict[str, Any]]]) -> None:
         if not by_sponsor:
             return
         rows = self._ticker_rows(rep)
@@ -424,6 +446,10 @@ class Scout:
             s += 2
         if any(x["event"] == "PDUFA" for x in c.sec):
             s += 1
+        # Late-stage first: Phase 3 / PDUFA odds are higher and better understood.
+        if (any(x["event"] in ("PHASE3_READOUT", "PDUFA") for x in c.sec)
+                or any(t.get("phase") == "PHASE3" for t in c.trials)):
+            s += 1
         if any(x["event"] in SUPPORTED for x in c.sec) or c.trials:
             s += 1
         if c.runway and float(c.runway.get("months", 0) or 0) >= 12:
@@ -508,7 +534,7 @@ class Scout:
             "catalysts": c.sec[:5],
             "ctgov_note": "ClinicalTrials.gov dates are sponsor estimates, never used as "
                           "catalyst dates" if c.trials else None,
-            "concentration": {"phase3_trials_completing_in_3_to_12_months":
+            "concentration": {"phase2_3_trials_completing_in_2_to_12_months":
                               c.sponsor_trials},
             "red_flags": c.flags,
             "licensing": c.licensing,

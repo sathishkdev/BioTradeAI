@@ -246,7 +246,8 @@ python -m biotradeai watchlist scout
 ```
 
 It reads the SEC daily filing index for 8-Ks from listed biotech companies, and
-ClinicalTrials.gov for industry Phase 3 trials finishing in 3–12 months. It matches
+ClinicalTrials.gov for industry Phase 2 and Phase 3 trials finishing in 2–12 months
+(Phase 1/2 trials are skipped; Phase 3 candidates rank higher). It matches
 trial sponsors to listed companies, and drops:
 * profitable companies;
 * anything with under 6 months of runway, or no runway data;
@@ -298,8 +299,8 @@ A rejected pair is not proposed again unless something material changes, such as
 new catalyst type.
 
 **c) Manual entries still work.** For a catalyst the scout didn't find, add a row to
-`data\catalysts.csv` (`ticker,drug,event,date,source_url`; events `PHASE3_READOUT` or
-`PDUFA`) and the drug's names to `data\synonyms.yaml`. Paper runs use both sources.
+`data\catalysts.csv` (`ticker,drug,event,date,source_url`; events `PHASE3_READOUT`,
+`PHASE2_READOUT` or `PDUFA`) and the drug's names to `data\synonyms.yaml`. Paper runs use both sources.
 
 **d) Base rates** — review `data\base_rates.yaml`. The headline rates are cited from
 BIO/Informa/QLS 2021; the "partial" splits and every return figure are assumptions.

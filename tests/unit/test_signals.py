@@ -48,6 +48,21 @@ def test_drug_mentions() -> None:
     assert not mentions_any(("XY101",), ("ABC-123",))
 
 
+@pytest.mark.parametrize(("sentence", "kind"), [
+    ("Topline data from the Phase 2b trial of XY-201 are expected in March 2027.",
+     "PHASE2_READOUT"),
+    ("Topline data from the Phase 2/3 trial of XY-201 are expected in March 2027.",
+     "PHASE3_READOUT"),  # seamless Phase 2/3 counts as pivotal
+    ("Topline data from the Phase II/III trial of XY-201 are expected in March 2027.",
+     "PHASE3_READOUT"),
+    ("Topline data from the Phase 1/2 trial of XY-201 are expected in March 2027.", None),
+])
+def test_phase_of_upcoming_readout(sentence: str, kind: str | None) -> None:
+    got = [c.event_type for c in find_catalysts(sentence)
+           if c.event_type.endswith("_READOUT")]
+    assert got == ([kind] if kind else [])
+
+
 def test_find_catalysts() -> None:
     text = ("Acme Bio today announced that the FDA accepted its NDA for ABC-123. "
             "The FDA assigned a PDUFA target action date of March 15, 2027. "

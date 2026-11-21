@@ -398,6 +398,9 @@ def test_gatherer_rejects_unsupported_event_and_dead_quote(cfg: GuardrailsConfig
                  run_id="r")
     with pytest.raises(GatherError, match="runway"):
         g.gather(ONCO_CAT, now=now, run_id="r")
+    with pytest.raises(GatherError, match="runway"):  # Phase 2 passes the event gate
+        g.gather(Catalyst("ONCO", "ONC-101", "PHASE2_READOUT", date(2027, 1, 15), URL),
+                 now=now, run_id="r")
 
 
 class StubTrials:

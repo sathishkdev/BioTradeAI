@@ -7,7 +7,7 @@ Rules (agreed with the user, replacing human-curated dates for approved pairs):
   ClinicalTrials.gov completion dates are never used as catalyst dates.
 * The newest filing wins. Two filings on the same day that disagree mark the event
   ``conflicting``, and it is not traded until a newer source settles it.
-* Tradable = upcoming, supported type (Phase 3 readout, PDUFA), and either an exact day
+* Tradable = upcoming, supported type (Phase 2 or Phase 3 readout, PDUFA), and either an exact day
   or a company-stated window of at most one quarter (the window end is used as the date).
 """
 
@@ -27,7 +27,7 @@ from biotradeai.watchlist.model import Status, WatchEntry, Watchlist
 
 # An outcome filed earlier than this before an event's window is about something else.
 OUTCOME_LEAD_DAYS = 45
-SUPPORTED = frozenset({"PHASE3_READOUT", "PDUFA"})
+SUPPORTED = frozenset({"PHASE3_READOUT", "PHASE2_READOUT", "PDUFA"})
 TRADABLE_PRECISION = frozenset({Precision.DAY, Precision.MONTH, Precision.QUARTER})
 
 

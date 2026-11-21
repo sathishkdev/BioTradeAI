@@ -98,6 +98,15 @@ def test_financing_bucket_boundaries(rates: BaseRates, months: float, raise_p: f
     assert rates.financing_for(months)["dilutive_raise"].p == raise_p
 
 
+def test_phase2_base_rates_anchor_to_bio2021(rates: BaseRates) -> None:
+    ev = rates.event("phase2_readout")
+    c = ev.clinical
+    assert c["success"].p + c["partial"].p == pytest.approx(0.289)  # Phase II -> III
+    assert "28.9%" in rates.sources[0].citation
+    for table in ev.regulatory.values():
+        assert sum(o.p for o in table.values()) == pytest.approx(1.0)
+
+
 def test_unknown_event_rejected(rates: BaseRates) -> None:
     with pytest.raises(BaseRateError):
         rates.event("earnings")

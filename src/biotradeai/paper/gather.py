@@ -25,7 +25,8 @@ from biotradeai.schemas import CatalystState, OrderSide, ResearchInputs
 from biotradeai.store.sqlite_store import SQLiteStore
 
 # catalysts.csv event -> base-rate event. Others have no base rates yet and are skipped.
-EVENT_MAP = {"PHASE3_READOUT": "phase3_readout", "PDUFA": "pdufa"}
+EVENT_MAP = {"PHASE3_READOUT": "phase3_readout", "PHASE2_READOUT": "phase2_readout",
+             "PDUFA": "pdufa"}
 QUERY = "{drug} clinical trial results primary endpoint safety clinical hold regulatory"
 
 

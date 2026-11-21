@@ -69,6 +69,10 @@ owner's account.
   `watchlist resync <id>` re-runs it.
 - An outcome mentioned in passing (e.g. an old CRL) can't close a future event: an
   outcome must be filed within 45 days of the event's window.
+- Phase 2 readouts are a supported catalyst type (`phase2_readout` base rates anchored
+  to BIO 2021's 28.9% Phase II -> III rate). The scout also queries Phase 2 trials;
+  Phase 1/2 is skipped and "Phase 2/3" counts as Phase 3. At base rates alone a
+  Phase 2 readout is a SKIP (negative EV).
 
 ### Not yet
 - Phases 3, 9 and 10 (Robinhood spike, shadow mode, live pilot).

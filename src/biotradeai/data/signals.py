@@ -172,7 +172,9 @@ def sentences(text: str) -> list[str]:
 _PDUFA = re.compile(r"\bPDUFA\b|target action date|goal date", re.I)
 _ADCOM = re.compile(r"advisory committee", re.I)
 _READOUT = re.compile(r"\b(top-?line|data|results|read-?out)\b", re.I)
-_PH3 = re.compile(r"\bphase\s*(3|III)\b|\bpivotal\b|\bregistrational\b", re.I)
+# Phase 2/3 (seamless, usually pivotal) counts as Phase 3, not Phase 2.
+_PH3 = re.compile(r"\bphase\s*(2\s*/\s*3|II\s*/\s*III|3|III)\b|\bpivotal\b|"
+                  r"\bregistrational\b", re.I)
 _PH2 = re.compile(r"\bphase\s*(2|II)(b)?\b", re.I)
 _PAST = re.compile(r"\b(announced|reported|presented|released)\b[^.]{0,60}?"
                    r"\b(data|results)\b", re.I)

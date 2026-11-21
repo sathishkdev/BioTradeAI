@@ -591,3 +591,22 @@ Findings are in `docs/robinhood_spike.md`. No orders were placed.
 * Deferred to Phase 9 (needs a standalone MCP client and the owner's go-ahead): custom
   client authentication and session keep-alive, and how a placed order shows up as a
   pending approval.
+
+## D-071 — Phase 2 readouts supported, conservatively (2026-11-20)
+* **Asked by the owner.** `PHASE2_READOUT` joins `PHASE3_READOUT` and `PDUFA` as a
+  tradable event (`watchlist/catalysts.SUPPORTED`, `paper/gather.EVENT_MAP`).
+* **Anchor:** `phase2_readout` in `data/base_rates.yaml`, success + partial = 28.9%
+  (BIO 2021 Phase II -> III). That rate also counts business-driven drops, so it
+  understates "positive topline"; kept because conservative is the safe error. Success
+  return (+150%), the partial share and the depth-2 table (path to Phase 3, not FDA
+  review) are assumptions for review.
+* **Consequence (intended, flagged to the owner):** unadjusted EV is about -0.13 to
+  -0.23 depending on runway; even the maximum +0.15 evidence nudge gives about +0.04
+  to +0.17, under `min_ev` 0.20. With today's numbers a Phase 2 readout is followed,
+  researched and logged, but not bought. Changing that is a base-rate/return review
+  decision, not a code change.
+* **Scout:** one ClinicalTrials.gov query per phase (keeps the verified single-phase
+  Essie syntax), deduplicated by NCT id. Trials that include PHASE1 (Phase 1/2) are
+  skipped. Phase 3 / PDUFA evidence scores +1 so late-stage candidates rank first.
+* **Signals:** "Phase 2/3" and "Phase II/III" are read as Phase 3 (seamless pivotal
+  designs); "Phase 2a" and "Phase 1/2" are not matched.

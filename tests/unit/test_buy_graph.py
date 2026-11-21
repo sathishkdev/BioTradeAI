@@ -95,6 +95,27 @@ def make(cfg: GuardrailsConfig, rates: BaseRates, store: SQLiteStore) -> Make:
     return lambda name: Harness(name, cfg, rates, store)
 
 
+# ------------------------------------------------------------------ Phase 2
+
+
+def test_phase2_readout_runs_end_to_end_and_base_rates_alone_skip(
+        cfg: GuardrailsConfig, rates: BaseRates, store: SQLiteStore) -> None:
+    from biotradeai.backtest.harness import base_llm
+
+    fx = load_fixture(FIX / "onco.yaml", cfg)
+    cat = fx.catalyst.model_copy(update={"catalyst_event": "phase2_readout"})
+    llm = base_llm()
+    deps = BuyGraphDeps(cfg, rates, llm, llm, store, executor=lambda *a: {},
+                        clock=lambda: cat.as_of)
+    out = start_run(build_buy_graph(deps, InMemorySaver()), cat, fx.inputs)
+    s = out.state
+    assert s.scenarios is not None and s.risk_ev is not None
+    assert sum(x.probability for x in s.scenarios.scenarios) == pytest.approx(1.0)
+    assert s.research_ev == pytest.approx(s.risk_ev, abs=1e-12)
+    # Phase 2 odds are poor (BIO 2021: 28.9% reach Phase 3): unadjusted EV is negative.
+    assert s.risk_ev < 0 and s.decision is Decision.SKIP and not out.awaiting_approval
+
+
 # ------------------------------------------------------------------ $ONCO
 
 

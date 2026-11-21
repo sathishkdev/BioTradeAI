@@ -79,7 +79,8 @@ def print_card(e: WatchEntry) -> None:
     d = c.get("drug") or {}
     _line("drug names", ", ".join(d.get("names") or e.drug_names))
     for t in d.get("trials") or []:
-        print(f"  trial            {t['nct']} [{t['status']}] {t['title'][:70]}")
+        phase = f" {t['phase']}" if t.get("phase") else ""
+        print(f"  trial            {t['nct']}{phase} [{t['status']}] {t['title'][:70]}")
         _line("  endpoint", t.get("endpoint"))
         _line("  given with", ", ".join(t.get("with") or []))
         _line("  enrollment", t.get("enrollment"))
@@ -90,8 +91,9 @@ def print_card(e: WatchEntry) -> None:
         print(f"                   \"{k['sentence'][:220]}\"")
         print(f"                   {k['url']}")
     _line("note", c.get("ctgov_note"))
-    _line("Phase 3s due", (c.get("concentration") or {}).get(
-        "phase3_trials_completing_in_3_to_12_months"))
+    conc = c.get("concentration") or {}
+    _line("Phase 2/3s due", conc.get("phase2_3_trials_completing_in_2_to_12_months",
+                                  conc.get("phase3_trials_completing_in_3_to_12_months")))
     fa = c.get("fda_approval") or {}
     if fa:
         _line("FDA approved", f"{fa.get('brand') or fa.get('generic')} ({fa.get('application')}, "
