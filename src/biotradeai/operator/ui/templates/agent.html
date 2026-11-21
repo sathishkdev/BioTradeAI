@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}{{ job.title }}{% endblock %}
+{% block heading %}{{ job.title }}{% endblock %}
+{% block subtitle %}<p><a class="link" href="/agents">Agents</a> · {{ job.summary }}</p>{% endblock %}
+{% block content %}
+<div class="grid g2">
+  <form class="card" method="post" action="/agents/{{ job.id }}/schedule">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="head"><h2>Schedule</h2>
+      <label class="switch"><input type="checkbox" name="enabled" {{ 'checked' if s.enabled }}> Run on schedule</label></div>
+    <div class="field">
+      <label>Days</label>
+      <div class="days">
+        {% for d in weekdays %}<label><input type="checkbox" name="days" value="{{ loop.index0 }}" {{ 'checked' if loop.index0 in s.days }}><span>{{ d }}</span></label>{% endfor %}
+      </div>
+    </div>
+    <div class="field">
+      <label for="at">Time (this computer's local time)</label>
+      <input id="at" type="time" name="at_time" value="{{ s.at_time }}" required>
+      <div class="hint">{% if next_fire %}Next run {{ next_fire.strftime('%A %b %d at %H:%M') }}.{% else %}Not scheduled.{% endif %} A run missed while the computer was off still starts within 2 hours.</div>
+    </div>
+
+    <h3 class="stack">Settings</h3>
+    {% for p in job.params %}
+    <div class="field">
+      {% if p.kind == 'bool' %}
+        <label class="check"><input type="checkbox" name="{{ p.name }}" value="true" {{ 'checked' if s.params.get(p.name, p.default) }}> {{ p.label }}</label>
+      {% elif p.kind == 'choice' %}
+        <label for="p-{{ p.name }}">{{ p.label }}</label>
+        <select id="p-{{ p.name }}" name="{{ p.name }}">
+          {% for v, lbl in p.choices %}<option value="{{ v }}" {{ 'selected' if s.params.get(p.name, p.default) == v }}>{{ lbl }}</option>{% endfor %}
+        </select>
+      {% else %}
+        <label for="p-{{ p.name }}">{{ p.label }}</label>
+        <input id="p-{{ p.name }}" type="number" name="{{ p.name }}" value="{{ s.params.get(p.name, p.default) }}"
+               min="{{ p.lo }}" max="{{ p.hi }}" step="{{ '1' if p.kind == 'int' else 'any' }}">
+      {% endif %}
+      {% if p.help %}<div class="hint">{{ p.help }}</div>{% endif %}
+    </div>
+    {% endfor %}
+    {% if job.needs_human %}<p class="hint stack">{{ job.needs_human }}</p>{% endif %}
+    <div class="actions stack"><button class="btn primary" type="submit">Save</button>
+      <span class="hint">Used by scheduled runs and “Run now”. Logged in the audit trail.</span></div>
+  </form>
+
+  <div class="card">
+    <div class="head"><h2>Runs</h2>
+      <form method="post" action="/agents/{{ job.id }}/run" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="btn primary sm" type="submit">Run now</button></form></div>
+    <table>
+      <tbody>
+      {% for r in runs %}
+        <tr class="click" data-href="/runs/{{ r.id }}">
+          <td class="mono">#{{ r.id }}</td>
+          <td class="nowrap">{{ (r.started_at or r.requested_at) | local }}<span class="sub">{{ 'Scheduled' if r.trigger == 'schedule' else 'Manual' }} · {{ r.duration_s | dur }}</span></td>
+          <td class="right">{% set tone = {'succeeded':'ok','failed':'bad','running':'info','queued':'info','cancelled':'mute'}[r.status] %}
+            <span class="pill {{ tone }}"><span class="dot {{ 'pulse' if r.active }}"></span>{{ r.status | capitalize }}</span></td>
+        </tr>
+      {% else %}
+        <tr><td><div class="empty"><strong>No runs yet</strong></div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

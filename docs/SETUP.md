@@ -363,6 +363,24 @@ risk check. Type `approve` to send it to Alpaca paper; anything else rejects it.
 
 ## 11. Schedule the daily run
 
+**Easiest: the operator app.**
+
+```powershell
+pip install -e ".[ui]"
+```
+
+```powershell
+python -m biotradeai ui
+```
+
+In **Agents**, open each agent, tick the days, set the time and turn on **Run on schedule**.
+For the paper cycle choose **Wait for me in Trade approvals**, then approve or reject orders
+in **Trade approvals** whenever you have a moment (they expire after 4 hours). In
+**Settings**, turn on **Start agent host at login** so schedules run even when the app is
+closed.
+
+**Or with Windows Task Scheduler directly:**
+
 Suggested schedule (local times; adjust the paths):
 
 | Job | When | Why |

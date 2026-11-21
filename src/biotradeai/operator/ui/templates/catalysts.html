@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Catalysts{% endblock %}
+{% block heading %}Catalysts{% endblock %}
+{% block subtitle %}<p>Dates the follow agent read from company filings for approved drugs. Conflicts are never traded until a newer filing settles them.</p>{% endblock %}
+{% block content %}
+<div class="card tight">
+  <table>
+    <thead><tr><th>Pair</th><th>Event</th><th>When</th><th>Status</th><th>Source</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><a class="link" href="/watchlist/{{ r.entry_id }}"><strong>{{ r.entry_id }}</strong></a></td>
+        <td>{{ r.event_type | event }}{% if r.trial_id %}<span class="sub mono">{{ r.trial_id }}</span>{% endif %}</td>
+        <td class="nowrap">{{ r.when }}<span class="sub">{{ r.precision }}{% if r.moved %} · moved {{ r.moved }}×{% endif %}</span></td>
+        <td>{% set tone = {'upcoming':'ok','conflicting':'warn','occurred':'mute'}.get(r.status, 'mute') %}
+          <span class="pill {{ tone }}">{{ r.status | capitalize }}</span>
+          {% if r.outcome %}<span class="sub">outcome: {{ r.outcome }}</span>{% endif %}
+          {% if r.status == 'upcoming' %}<span class="sub">{{ 'tradable' if r.tradable else 'not tradable yet (date too vague)' }}</span>{% endif %}</td>
+        <td class="small"><div class="quote">“{{ r.source_sentence[:180] }}”</div><span class="faint mono">filed {{ r.source_filed }}</span></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5"><div class="empty"><strong>No catalyst dates yet</strong>Approve a watchlist pair, then run the follow agent.</div></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

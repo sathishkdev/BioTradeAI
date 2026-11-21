@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}{{ run_id }}{% endblock %}
+{% block heading %}{{ ticker or 'Run' }} <span class="muted">· research run</span>{% endblock %}
+{% block subtitle %}<p><a class="link" href="/activity">Activity</a> · <span class="mono">{{ run_id }}</span></p>{% endblock %}
+{% block content %}
+{% if decision %}
+<div class="grid g4">
+  <div class="card stat"><div class="k">Decision</div>
+    {% set tone = {'BUY_CANDIDATE': 'ok', 'SKIP': 'mute', 'INCONCLUSIVE': 'warn'}.get(decision.decision, 'mute') %}
+    <div class="v"><span class="pill {{ tone }}">{{ (decision.decision or '?') | replace('_', ' ') | title }}</span></div></div>
+  <div class="card stat"><div class="k">Expected value (risk agent)</div><div class="v">{{ '%+.3f' % decision.risk_ev if decision.risk_ev is not none else '—' }}</div></div>
+  <div class="card stat"><div class="k">Evidence confidence</div><div class="v">{{ ingest.confidence | pct(0) if ingest else '—' }}</div></div>
+  <div class="card stat"><div class="k">Cash runway</div><div class="v">{{ '%.1f' % ingest.runway_months if ingest and ingest.runway_months is not none else '—' }} <small>months</small></div></div>
+</div>
+{% if decision.reasons %}<div class="card stack"><h2>Why</h2><ul>{% for x in decision.reasons %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+{% endif %}
+
+{% if final and final.scenarios %}
+<div class="card tight stack">
+  <div class="pad"><h2>Scenarios (Tree of Thoughts)</h2></div>
+  <table>
+    <thead><tr><th>Path</th><th class="right">Probability</th><th>Share</th><th class="right">Return</th></tr></thead>
+    <tbody>
+    {% for s in final.scenarios.scenarios | sort(attribute='probability', reverse=True) %}
+      <tr><td>{{ s.label | replace('>', '›') }}{% if s.is_residual %} <span class="pill warn">pruned residual</span>{% endif %}</td>
+        <td class="right">{{ s.probability | pct(1) }}</td>
+        <td><meter min="0" max="1" value="{{ s.probability }}"></meter></td>
+        <td class="right">{{ '%+.0f%%' % (s.expected_return * 100) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if risk and risk.checks %}
+<div class="card stack"><h2>Risk checks</h2>
+  <ul class="checks">{% for ch in risk.checks %}<li><span class="{{ 'y' if ch.ok else 'n' }}">{{ '✓' if ch.ok else '✕' }}</span><span><strong>{{ ch.rule }}</strong> <span class="muted">{{ ch.reason }}</span></span></li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<div class="card tight stack">
+  <div class="pad"><h2>Every step</h2></div>
+  <table>
+    <tbody>
+    {% for r in rows %}
+      <tr><td class="nowrap">{{ r.ts | local('%H:%M:%S') }}</td><td><strong>{{ r.event }}</strong></td>
+        <td><details><summary>{{ (r.payload | tojson)[:100] }}</summary><pre class="json">{{ r.payload | pretty }}</pre></details></td></tr>
+    {% else %}
+      <tr><td><div class="empty">No events for this run.</div></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

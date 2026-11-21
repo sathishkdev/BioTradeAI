@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Run #{{ r.id }}{% endblock %}
+{% block heading %}{{ job.title if job else r.job }} · run #{{ r.id }}{% endblock %}
+{% block subtitle %}<p><a class="link" href="/agents">Agents</a> · {% if job %}<a class="link" href="/agents/{{ job.id }}">{{ job.title }}</a>{% endif %}</p>{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="head">
+    {% set tone = {'succeeded':'ok','failed':'bad','running':'info','queued':'info','cancelled':'mute'}[r.status] %}
+    <span class="pill {{ tone }}"><span class="dot {{ 'pulse' if r.active }}"></span>{{ r.status | capitalize }}</span>
+    <span class="grow"></span>
+    {% if r.active %}
+      <form method="post" action="/runs/{{ r.id }}/cancel" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="btn danger" type="submit">Stop this run</button></form>
+    {% elif job %}
+      <form method="post" action="/agents/{{ job.id }}/run" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="btn" type="submit">Run again</button></form>
+    {% endif %}
+  </div>
+  <dl class="kv">
+    <dt>Trigger</dt><dd>{{ 'Schedule' if r.trigger == 'schedule' else 'Manual' }} · requested by {{ r.requested_by }}</dd>
+    <dt>Requested</dt><dd>{{ r.requested_at | local('%b %d, %H:%M:%S') }}</dd>
+    <dt>Started</dt><dd>{{ r.started_at | local('%b %d, %H:%M:%S') }}</dd>
+    <dt>Finished</dt><dd>{{ r.finished_at | local('%b %d, %H:%M:%S') }}</dd>
+    <dt>Duration</dt><dd id="run-duration">{{ r.duration_s | dur }}</dd>
+    <dt>Command</dt><dd class="mono">biotradeai {{ r.argv | join(' ') }}</dd>
+    {% if r.exit_code is not none %}<dt>Exit code</dt><dd>{{ r.exit_code }}</dd>{% endif %}
+    {% if r.error %}<dt>Problem</dt><dd class="mono">{{ r.error }}</dd>{% endif %}
+  </dl>
+  {% if r.status == 'queued' and not host.running %}
+    <p class="flash err stack">Waiting for the agent host. <a class="link" href="/agents">Start it on the Agents page.</a></p>
+  {% endif %}
+</div>
+<div class="card stack">
+  <div class="head"><h2>Output</h2>{% if r.active %}<span class="faint small">Live</span>{% endif %}</div>
+  <pre class="log" id="log" data-run="{{ r.id }}" data-active="{{ '1' if r.active else '0' }}">{{ log or ('Waiting for output…' if r.active else 'No output.') }}</pre>
+</div>
+{% endblock %}

@@ -2,6 +2,7 @@
 
     biotradeai paper run              # one cycle: exits, then entries (asks you to approve)
     biotradeai paper run --broker fake --auto-reject   # dry run, never approves
+    biotradeai paper run --approve-later   # orders wait in the operator app's queue
     biotradeai paper review           # today's audit summary (or --date YYYY-MM-DD)
     biotradeai paper gate             # paper days / breaches toward the live gate
 
@@ -32,9 +33,11 @@ from biotradeai.data.outcomes import load_outcomes
 from biotradeai.data.pollers import TrialDatePoller
 from biotradeai.events import CompletionDateChange
 from biotradeai.graph.buy_graph import sqlite_checkpointer
+from biotradeai.operator.db import OperatorDB
+from biotradeai.operator.trades import make_defer_sink
 from biotradeai.paper.gather import EdgarFilings, LiveGatherer, edgar_runway
 from biotradeai.paper.review import daily_review, paper_gate, render_review
-from biotradeai.paper.runner import Approver, PaperRunner
+from biotradeai.paper.runner import DEFER, Approver, PaperRunner
 from biotradeai.rag.embeddings import make_embedder
 from biotradeai.rag.index import VectorIndex
 from biotradeai.rag.ontology import load_ontology
@@ -45,8 +48,8 @@ from biotradeai.watchlist.catalysts import agent_catalysts, agent_outcomes
 from biotradeai.watchlist.model import Status, Watchlist
 
 
-def interactive_approver(auto_reject: bool) -> Approver:
-    def approve(order: StagedOrder, pack: dict[str, Any]) -> bool:
+def interactive_approver(auto_reject: bool, approve_later: bool = False) -> Approver:
+    def approve(order: StagedOrder, pack: dict[str, Any]) -> bool | str:
         print("=" * 72)
         print(f" {str(pack['kind']).upper()} FOR HUMAN APPROVAL: {order.side.value.upper()} "
               f"{order.qty} {order.ticker} LIMIT @ {order.limit_price}")
@@ -59,6 +62,9 @@ def interactive_approver(auto_reject: bool) -> Approver:
         if auto_reject:
             print("  --auto-reject: rejected")
             return False
+        if approve_later:
+            print("  --approve-later: waiting in the operator app (Trade approvals)")
+            return DEFER
         return _ask("Type 'approve' to approve, anything else rejects: ").lower() == "approve"
     return approve
 
@@ -89,12 +95,18 @@ def cmd_paper_run(args: argparse.Namespace) -> int:
                             broker=broker, cfg=cfg)
     authority = ApprovalAuthority(load_secret(),
                                   ttl=timedelta(minutes=cfg.orders.approval_ttl_minutes))
+    if args.auto_reject and args.approve_later:
+        raise PermissionError("choose --auto-reject or --approve-later, not both")
+    opdb = OperatorDB(store)
     with sqlite_checkpointer() as saver:
         runner = PaperRunner(
             cfg=cfg, store=store, broker=broker, gatherer=gatherer, rates=load_base_rates(),
             generator=make_llm_client("research", args.llm),
             critic=make_llm_client("critic", args.critic_llm or args.llm),
-            authority=authority, approver=interactive_approver(args.auto_reject),
+            authority=authority,
+            approver=interactive_approver(args.auto_reject, args.approve_later),
+            on_defer=make_defer_sink(opdb, broker=args.broker, cfg=cfg),
+            has_pending=opdb.has_pending,
             checkpointer=saver, filings=EdgarFilings(edgar, store),
             trials=WatchlistTrials(Watchlist(), TrialDatePoller(ClinicalTrialsClient(), store)))
         # Human-curated rows + agent-managed events for APPROVED watchlist drugs.
@@ -142,6 +154,8 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     run.add_argument("--critic-llm", help="critic spec (default: same as --llm)")
     run.add_argument("--embedder", help="embedder spec (default: env / bge-small)")
     run.add_argument("--auto-reject", action="store_true", help="never approve (dry run)")
+    run.add_argument("--approve-later", action="store_true",
+                     help="park orders for approval in the operator app (unattended runs)")
     run.set_defaults(fn=cmd_paper_run)
     rv = ps.add_parser("review", help="summarise a day of the audit log")
     rv.add_argument("--date", help="YYYY-MM-DD (default: today, UTC)")

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Positions{% endblock %}
+{% block heading %}Positions{% endblock %}
+{% block subtitle %}<p>Open positions and where each one stands in the exit rules. The paper cycle checks them every run.</p>{% endblock %}
+{% block content %}
+<div class="card tight">
+  <table>
+    <thead><tr><th>Ticker</th><th class="right">Shares</th><th class="right">Entry</th><th>Catalyst</th><th>Exit state</th><th class="right">Last bid</th><th>Opened</th></tr></thead>
+    <tbody>
+    {% for p in rows %}
+      <tr>
+        <td><strong>{{ p.ticker }}</strong></td>
+        <td class="right">{{ '•••' if presenting else p.qty }}</td>
+        <td class="right">{{ p.avg_price | money }}</td>
+        <td>{{ p.catalyst_event | event }}<span class="sub">{{ p.catalyst_date or '' }}</span></td>
+        <td>{% set tone = {'holding':'ok','trailing':'info','closed':'mute'}.get((p.sell_state or '') | lower, 'mute') %}
+          <span class="pill {{ tone }}">{{ (p.sell_state or 'unknown') | capitalize }}</span>
+          {% if p.high %}<span class="sub">high {{ p.high | money }}</span>{% endif %}</td>
+        <td class="right">{{ p.last_bid | money if p.last_bid else '—' }}</td>
+        <td class="nowrap">{{ p.opened_at | local }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7"><div class="empty"><strong>No open positions</strong>Approved buys show up here, with their exit rules.</div></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="hint stack">Exit rules: take profit on a +30% run-up; after a positive readout sell half and trail the rest; sell everything on a negative readout, CRL or dilutive filing; exit if the trial slips more than 6 months. Every exit waits for your approval.</p>
+{% endblock %}

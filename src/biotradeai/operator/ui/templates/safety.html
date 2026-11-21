@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Safety{% endblock %}
+{% block heading %}Safety{% endblock %}
+{% block subtitle %}<p>Kill-switch, guardrail breaches, the live gate and data-source health.</p>{% endblock %}
+{% block content %}
+<div class="grid g2">
+  <div class="card">
+    <div class="head"><h2>Kill-switch</h2>
+      {% if ks.tripped %}<span class="pill bad"><span class="dot"></span>Tripped</span>{% else %}<span class="pill ok"><span class="dot"></span>Armed, not tripped</span>{% endif %}</div>
+    {% if ks.tripped %}
+      <p><strong>Reason:</strong> {{ ks.reason }}</p>
+      <p class="muted small">Since {{ ks.changed_at | local }} · by {{ ks.changed_by }}. Nothing can be placed until a human resets it.</p>
+      <div class="actions stack"><button class="btn primary" data-open="dlg-reset">Reset kill-switch…</button></div>
+    {% else %}
+      <p class="muted">Trips by itself on a {{ cfg.daily_drawdown_limit | pct }} daily drawdown or {{ cfg.max_api_errors }} broker errors in a row ({{ api_errors }} now). Tripping cancels open orders and blocks all new ones.</p>
+      <div class="actions stack"><button class="btn danger solid" data-open="dlg-trip">Trip kill-switch now</button></div>
+    {% endif %}
+    {% if ks_events %}<h3 class="stack">Recent</h3>
+      <table><tbody>{% for e in ks_events %}<tr><td class="nowrap">{{ e.ts | local }}</td><td>{{ e.event }}</td><td class="muted small">{{ e.payload.reason or e.payload.operator or '' }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+  </div>
+
+  <div class="card">
+    <div class="head"><h2>Path to live trading</h2><span class="pill {{ 'ok' if gate.eligible else 'mute' }}">{{ 'Paper condition met' if gate.eligible else 'Not yet' }}</span></div>
+    <p class="muted">Mode now: <strong>{{ mode | upper }}</strong>. Live needs {{ gate.required_days }} clean paper days, then Robinhood shadow mode (simulation only), then a small pilot ({{ cfg.live_gate.pilot_position_pct | pct }} per position, {{ cfg.live_gate.pilot_max_positions }} position).</p>
+    <div class="field stack"><label>Paper days: {{ gate.paper_days }} of {{ gate.required_days }}</label>
+      <meter min="0" max="{{ gate.required_days }}" value="{{ gate.paper_days }}"></meter>
+      <div class="hint">{% if gate.first_day %}First paper day {{ gate.first_day }}.{% endif %} Breaches so far: {{ gate.breaches }} (must be 0).</div></div>
+    <p class="hint stack">Robinhood: not connected yet (Phase 9). Account details will be hidden by default and shown only when you ask.</p>
+  </div>
+</div>
+
+<div class="grid g2 stack">
+  <div class="card">
+    <h2>Guardrail breaches</h2>
+    {% for b in breaches %}<p><span class="pill bad">Breach</span> {{ b.ts | local }} · {{ b.ticker }} · {{ b.payload.breach }}</p>
+    {% else %}<div class="empty"><strong>None</strong>No order has ever broken a guardrail.</div>{% endfor %}
+  </div>
+  <div class="card tight">
+    <div class="pad"><h2>Data sources today</h2></div>
+    <table>
+      <thead><tr><th>Source</th><th class="right">Requests</th><th class="right">Failures</th><th>Circuit</th></tr></thead>
+      <tbody>
+      {% for l in ledger %}
+        <tr><td>{{ l.source }}</td><td class="right">{{ l.count }}</td><td class="right">{{ l.failures }}</td>
+          <td>{% if l.tripped %}<span class="pill bad">Open (paused)</span>{% else %}<span class="pill ok">OK</span>{% endif %}</td></tr>
+      {% else %}
+        <tr><td colspan="4"><div class="empty">No requests yet today.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<dialog id="dlg-trip"><form method="post" action="/safety/trip">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Trip the kill-switch?</h2>
+  <p class="muted">Cancels open orders at the broker and blocks every new order until a human resets it.</p>
+  <div class="actions"><button class="btn ghost" data-close>Cancel</button><button class="btn danger solid" type="submit">Trip now</button></div>
+</form></dialog>
+<dialog id="dlg-reset"><form method="post" action="/safety/reset">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Reset the kill-switch?</h2>
+  <p class="muted">Make sure you understand why it tripped. Type <code>RESET</code> to confirm.</p>
+  <input type="text" name="typed" autocomplete="off" data-match="RESET">
+  <div class="actions"><button class="btn ghost" data-close>Cancel</button><button class="btn primary" type="submit">Reset</button></div>
+</form></dialog>
+{% endblock %}

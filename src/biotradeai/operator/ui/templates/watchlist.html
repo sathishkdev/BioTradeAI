@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Watchlist{% endblock %}
+{% block heading %}Watchlist{% endblock %}
+{% block subtitle %}<p>Company + drug pairs. The scout proposes; you decide. Approved pairs are followed until launch.</p>{% endblock %}
+{% block content %}
+{% set labels = {'proposed': 'Waiting for review', 'approved': 'Approved', 'paused': 'Paused', 'rejected': 'Rejected', 'retired': 'Retired'} %}
+<nav class="tabs">
+  {% for k in ['proposed', 'approved', 'paused', 'rejected', 'retired'] %}
+  <a href="/watchlist?tab={{ k }}" class="{{ 'on' if tab == k }}">{{ labels[k] }}<span class="n">{{ tabs[k] | length }}</span></a>
+  {% endfor %}
+</nav>
+<div class="card tight">
+  <table>
+    <thead><tr><th>Pair</th><th>Company</th><th>Evidence</th><th>Catalysts</th>
+      <th>{{ 'Proposed' if tab == 'proposed' else 'Decided' }}</th><th class="right">Score</th></tr></thead>
+    <tbody>
+    {% for e in tabs[tab] %}
+      {% set c = e.card %}
+      <tr class="click" data-href="/watchlist/{{ e.id }}">
+        <td><strong>{{ e.drug_names[0] }}</strong><span class="sub mono">{{ e.id }}</span></td>
+        <td>{{ e.company }}<span class="sub">{{ e.ticker }}{% if c.runway %} · runway {{ '%.0f' % (c.runway.months or 0) }} mo{% endif %}</span></td>
+        <td>{% for s in c.sources or [] %}<span class="pill mute">{{ s }}</span> {% endfor %}
+          {% if c.red_flags %}<span class="sub">{{ c.red_flags | length }} flag(s)</span>{% endif %}</td>
+        <td class="small">{% for k in (c.catalysts or [])[:2] %}{{ k.event | event }} · {{ k.when }}<br>{% else %}<span class="faint">From trials only</span>{% endfor %}</td>
+        <td class="nowrap">{{ (e.decided_at.isoformat() if e.decided_at else e.proposed_at.isoformat()) | local }}
+          {% if e.pause_reason %}<span class="sub">{{ e.pause_reason[:60] }}</span>{% endif %}
+          {% if e.retire_reason %}<span class="sub">{{ e.retire_reason[:60] }}</span>{% endif %}
+          {% if e.status.value == 'rejected' and e.note %}<span class="sub">{{ e.note[:60] }}</span>{% endif %}</td>
+        <td class="right">{{ '%.1f' % e.score }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6"><div class="empty"><strong>Nothing here</strong>{% if tab == 'proposed' %}Run the watchlist scout from Agents to find new pairs.{% endif %}</div></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

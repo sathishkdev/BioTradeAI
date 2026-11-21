@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Activity{% endblock %}
+{% block heading %}Activity &amp; audit{% endblock %}
+{% block subtitle %}<p>Every step the agents and you took, from the append-only, hash-chained audit log.</p>{% endblock %}
+{% block content %}
+<form class="card actions" method="get" action="/activity">
+  <div class="grow"><label for="f-prefix">Event</label>
+    <select id="f-prefix" name="prefix">
+      {% for v, l in [('', 'All events'), ('supervisor.decision', 'Decisions'), ('approval.', 'Approvals'), ('execution.', 'Orders'), ('sell.', 'Exits'), ('watchlist.', 'Watchlist'), ('operator.', 'Agents & schedules'), ('config.', 'Settings changes'), ('killswitch.', 'Kill-switch'), ('guardrail.', 'Breaches'), ('paper.', 'Paper cycles')] %}
+      <option value="{{ v }}" {{ 'selected' if prefix == v }}>{{ l }}</option>{% endfor %}
+    </select></div>
+  <div><label for="f-ticker">Ticker</label><input id="f-ticker" type="text" name="ticker" value="{{ ticker }}" placeholder="Any"></div>
+  <div><label for="f-run">Run id</label><input id="f-run" type="text" name="run" value="{{ run }}" placeholder="Any"></div>
+  <div><label class="check"><input type="checkbox" name="hide_tests" value="1" {{ 'checked' if hide_tests }}> Hide test runs</label></div>
+  <div><button class="btn primary" type="submit">Filter</button></div>
+</form>
+
+<div class="actions stack">
+  <form method="post" action="/activity/verify" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="btn" type="submit">Verify audit chain</button></form>
+  {% if chain == 'ok' %}<span class="pill ok"><span class="dot"></span>Chain intact: no entry was altered or removed</span>
+  {% elif chain == 'broken' %}<span class="pill bad"><span class="dot"></span>Chain BROKEN: the log was tampered with</span>{% endif %}
+</div>
+
+<div class="card tight stack">
+  <table>
+    <thead><tr><th>When</th><th>Event</th><th>Ticker</th><th>Details</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td class="nowrap">{{ r.ts | local('%b %d, %H:%M:%S') }}</td>
+        <td><strong>{{ r.event }}</strong>{% if r.run_id %}<span class="sub"><a class="link" href="/activity/run/{{ r.run_id }}">{{ r.run_id }}</a></span>{% endif %}</td>
+        <td>{{ r.ticker or '' }}</td>
+        <td><details><summary>{{ (r.payload | tojson)[:110] }}</summary><pre class="json">{{ r.payload | pretty }}</pre></details></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4"><div class="empty">No matching events.</div></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if rows | length == 100 %}
+<div class="actions stack"><a class="btn" href="/activity?prefix={{ prefix }}&ticker={{ ticker }}&run={{ run }}&hide_tests={{ hide_tests }}&before={{ rows[-1].id }}">Older</a></div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}{{ e.id }}{% endblock %}
+{% block heading %}{{ e.drug_names[0] }} <span class="muted">· {{ e.company }}</span>{% endblock %}
+{% block subtitle %}<p><a class="link" href="/watchlist?tab={{ e.status.value }}">Watchlist</a> · <span class="mono">{{ e.id }}</span></p>{% endblock %}
+{% block content %}
+{% set c = e.card %}{% set st = e.status.value %}
+<div class="card">
+  <div class="head">
+    {% set tone = {'proposed':'info','approved':'ok','paused':'warn','rejected':'mute','retired':'mute'}[st] %}
+    <span class="pill {{ tone }}"><span class="dot"></span>{{ st | capitalize }}</span>
+    <span class="pill mute">Stage: {{ e.stage.value }}</span>
+    <span class="grow"></span>
+    {% if st in ('proposed', 'paused', 'rejected') %}<button class="btn go" data-open="dlg-approve">{{ 'Re-approve' if st == 'paused' else 'Approve' }}</button>{% endif %}
+    {% if st == 'proposed' %}<button class="btn danger" data-open="dlg-reject">Reject</button>{% endif %}
+    {% if st in ('approved', 'paused') %}<button class="btn" data-open="dlg-resync">Re-sync</button>
+      <button class="btn danger" data-open="dlg-retire">Retire</button>{% endif %}
+  </div>
+  {% if e.pause_reason %}<p class="flash err">Paused: {{ e.pause_reason }}</p>{% endif %}
+  {% if c.previously %}<p class="muted">Previously {{ c.previously.status }} ({{ c.previously.reason }}). Back because: {{ c.previously.material_change }}.</p>{% endif %}
+  <dl class="kv">
+    <dt>Company</dt><dd>{{ e.company }} · {{ e.ticker }}{% if c.company %} · {{ (c.company.exchanges or []) | join(', ') }}{% endif %}</dd>
+    <dt>Drug names</dt><dd>{{ e.drug_names | join(', ') }}</dd>
+    <dt>How it was found</dt><dd>{{ (c.sources or []) | join(' + ') }} · {{ c.match }}</dd>
+    {% if c.runway %}<dt>Cash runway</dt><dd>{{ '%.1f' % (c.runway.months or 0) }} months{% if c.runway.cash %} · cash {{ c.runway.cash | money }}{% endif %}</dd>{% endif %}
+    {% if c.market %}<dt>Market</dt><dd>{% if c.market.error %}{{ c.market.error }}{% else %}bid {{ c.market.bid }} / ask {{ c.market.ask }}{% if c.market.market_cap %} · cap ~${{ '%.0f' % ((c.market.market_cap | float) / 1e6) }}M{% endif %}{% endif %}</dd>{% endif %}
+    {% if c.licensing %}<dt>Licensing</dt><dd>{{ c.licensing.role }}: {{ c.licensing.code }} ({{ c.licensing.company }})</dd>{% endif %}
+    {% if c.fda_approval %}<dt>FDA</dt><dd>{{ c.fda_approval }}</dd>{% endif %}
+    {% if e.approved_at %}<dt>Approved</dt><dd>{{ e.approved_at.isoformat() | local }} by {{ e.decided_by }}{% if e.checkin_due %} · yearly check-in {{ e.checkin_due }}{% endif %}</dd>{% endif %}
+    {% if e.note %}<dt>Note</dt><dd>{{ e.note }}</dd>{% endif %}
+  </dl>
+  {% if c.red_flags %}<h3 class="stack">Red flags</h3><ul>{% for f in c.red_flags %}<li>{{ f }}</li>{% endfor %}</ul>{% endif %}
+</div>
+
+<div class="grid g2 stack">
+  <div class="card">
+    <h2>Catalysts</h2>
+    {% for ev in events %}
+      <div class="field"><strong>{{ ev.event_type | event }}</strong> · {{ ev.date or (ev.window_start ~ ' – ' ~ ev.window_end) }}
+        <span class="pill {{ 'warn' if ev.status == 'conflicting' else 'mute' }}">{{ ev.status }}</span>
+        <div class="quote">“{{ ev.source_sentence[:260] }}”</div>
+        <div class="faint small mono">{{ ev.source_url }}</div></div>
+    {% else %}
+      {% for k in c.catalysts or [] %}
+      <div class="field"><strong>{{ k.event | event }}</strong> · {{ k.when }} ({{ k.precision }})
+        <div class="quote">“{{ k.sentence[:260] }}”</div>
+        <div class="faint small mono">{{ k.url }}</div></div>
+      {% else %}<p class="muted">No dated catalyst yet. ClinicalTrials.gov dates are estimates and are never used as catalyst dates.</p>{% endfor %}
+    {% endfor %}
+  </div>
+  <div class="card">
+    <h2>Trials</h2>
+    {% for t in (c.drug or {}).trials or [] %}
+      <div class="field"><strong class="mono">{{ t.nct }}</strong>{% if t.phase %} <span class="pill mute">{{ t.phase }}</span>{% endif %} <span class="muted small">{{ t.status }}</span>
+        <div>{{ t.title }}</div>
+        <div class="small muted">Endpoint: {{ t.endpoint or '—' }} · completion {{ t.primary_completion or '—' }} (estimate){% if t.with %} · given with {{ t.with | join(', ') }}{% endif %}</div></div>
+    {% else %}<p class="muted">No trials on the card.</p>{% endfor %}
+  </div>
+</div>
+
+<div class="card stack">
+  <h2>History</h2>
+  <table><tbody>
+  {% for h in e.history | reverse %}
+    <tr><td class="nowrap">{{ h.at | local }}</td><td>{{ h['from'] or 'new' }} → <strong>{{ h.to }}</strong></td><td class="muted">{{ h.by }}</td><td class="muted">{{ h.reason }}</td></tr>
+  {% endfor %}
+  </tbody></table>
+</div>
+
+<dialog id="dlg-approve"><form method="post" action="/watchlist/{{ e.id }}/approve">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>{{ 'Re-approve' if st == 'paused' else 'Approve' }} {{ e.drug_names[0] }}?</h2>
+  <p class="muted">The agents will follow this drug through every phase until one quarter after launch, and may stage orders for your approval.</p>
+  <label for="ap-note">Note (optional)</label><input id="ap-note" type="text" name="note" autocomplete="off">
+  <div class="actions"><button class="btn ghost" data-close>Cancel</button><button class="btn go" type="submit">Approve</button></div>
+</form></dialog>
+<dialog id="dlg-reject"><form method="post" action="/watchlist/{{ e.id }}/reject">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Reject {{ e.drug_names[0] }}?</h2>
+  <p class="muted">It won't be proposed again unless something material changes.</p>
+  <label for="rj-note">Reason</label><input id="rj-note" type="text" name="note" autocomplete="off" data-required>
+  <div class="actions"><button class="btn ghost" data-close>Cancel</button><button class="btn danger solid" type="submit">Reject</button></div>
+</form></dialog>
+<dialog id="dlg-retire"><form method="post" action="/watchlist/{{ e.id }}/retire">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Stop following {{ e.drug_names[0] }}?</h2>
+  <p class="muted">No new orders will be staged for it. Open positions are still managed by the exit rules.</p>
+  <label for="rt-note">Reason</label><input id="rt-note" type="text" name="note" autocomplete="off" data-required>
+  <div class="actions"><button class="btn ghost" data-close>Cancel</button><button class="btn danger solid" type="submit">Retire</button></div>
+</form></dialog>
+<dialog id="dlg-resync"><form method="post" action="/watchlist/{{ e.id }}/resync">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Re-sync {{ e.drug_names[0] }}?</h2>
+  <p class="muted">The next follow run re-reads its older filings for catalyst dates. Documents already loaded are skipped.</p>
+  <div class="actions"><button class="btn ghost" data-close>Cancel</button><button class="btn primary" type="submit">Re-sync</button></div>
+</form></dialog>
+{% endblock %}

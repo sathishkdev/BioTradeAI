@@ -31,6 +31,7 @@ dates and Phase 3 (and, conservatively, Phase 2) readouts.
 - [Sell state machine](#sell-state-machine)
 - [Safety model](#safety-model)
 - [Data sources and network guardrails](#data-sources-and-network-guardrails)
+- [Operator app](#operator-app)
 - [Repository layout](#repository-layout)
 - [Commands](#commands)
 - [Switching LLMs](#switching-llms)
@@ -371,6 +372,38 @@ The repository's test data is synthetic.
 
 ---
 
+## Operator app
+
+A desktop window for running and supervising everything, instead of typing commands.
+
+```powershell
+pip install -e ".[ui]"
+python -m biotradeai ui          # opens the app; starts the agent host if needed
+```
+
+| Screen | What you can do |
+|---|---|
+| Overview | What's running, what needs you, failed runs, latest decisions, paper days toward the live gate |
+| Agents | Run now, stop, enable or edit each schedule (days, time) and agent settings; run history with live output and failures |
+| Trade approvals | Orders staged by the paper cycle, each with its **destination** (Alpaca paper, fake broker, Robinhood shadow/live), EV, checks and sources. Approve by typing the ticker (and `LIVE` for real money) or reject with a reason |
+| Watchlist | Waiting for review, approved, paused, rejected, retired; the full evidence card; approve, reject, retire, re-sync |
+| Catalysts / Positions | Catalyst dates with their source sentence; open positions and their exit-rule state |
+| Activity & audit | Filterable audit log, each research run's scenarios and risk checks, audit-chain verification |
+| Safety | Trip or reset the kill-switch, breaches, live-gate progress, data-source health |
+| Settings | Guardrail values (validated, comments kept, hard ceilings enforced), base-rate review, keys (write-only, never shown), presentation mode, start the host at login |
+
+How it fits together:
+* **Agent host** (`python -m biotradeai host`): an always-on process that fires schedules and runs
+  each agent as its own process, with heartbeats, logs (`data/logs/runs/`), one run per agent at
+  a time and cancel. It keeps running when the window is closed.
+* **Approve-later queue**: scheduled paper runs use `paper run --approve-later`, so a staged order
+  waits (default 4 hours) instead of needing someone at the keyboard. Approving re-quotes,
+  blocks if the price moved more than 5%, then issues the same signed token as the terminal and
+  hands the order to `execution.py`, which re-runs every rule. Nothing in the UI can place an
+  order any other way.
+* **Security**: the app listens on 127.0.0.1 only, uses a per-launch session token, CSRF tokens on
+  every form and a strict content policy. Every action is audit-logged with `source: ui`.
+
 ## Repository layout
 
 ```
@@ -390,7 +423,8 @@ BioTradeAI/
   src/biotradeai/
     config.py  schemas.py  events.py  redact.py  paths.py  inputs.py
     data/  rag/  agents/  graph/  guardrails/  brokers/  paper/  backtest/  store/
-    cli.py  cli_trading.py  cli_rag.py  cli_agents.py  cli_paper.py
+    operator/                   operator app: agent host, approve-later queue, web UI, window
+    cli.py  cli_trading.py  cli_rag.py  cli_agents.py  cli_paper.py  cli_operator.py
   tests/unit/  tests/integration/  tests/eval/
 ```
 
@@ -444,9 +478,16 @@ python -m biotradeai account               # needs Alpaca paper keys
 python -m biotradeai positions
 python -m biotradeai paper run             # one cycle: exits then entries, approval prompts
 python -m biotradeai paper run --broker fake --auto-reject   # dry run
+python -m biotradeai paper run --approve-later   # unattended: orders wait in the operator app
 python -m biotradeai paper review          # today's audit summary
 python -m biotradeai paper gate            # paper days / breaches toward the live gate
 python -m biotradeai killswitch status     # trip | reset
+```
+
+**Operator app**
+```powershell
+python -m biotradeai ui                    # the app (--browser to use your browser)
+python -m biotradeai host                  # the agent host on its own (the app starts it)
 ```
 
 ## Switching LLMs

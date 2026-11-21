@@ -26,6 +26,8 @@ orders:
   allowed_types: [limit]
   allow_extended_hours: false   # revisit after Robinhood spike (Phase 3)
   approval_ttl_minutes: 15      # how long a human approval token stays valid
+  pending_approval_hours: 4     # approve-later queue: a staged order waits this long
+  max_price_drift_pct: 0.05     # approve-later: blocked if the price moved more than this
 tot:
   depth: 3
   beam_width: 2

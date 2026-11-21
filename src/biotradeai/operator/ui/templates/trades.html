@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Trade approvals{% endblock %}
+{% block heading %}Trade approvals{% endblock %}
+{% block subtitle %}<p>Orders the agents staged and parked for you. Approving re-checks the price and every risk rule before anything is sent.</p>{% endblock %}
+{% block content %}
+{% for c in cards %}
+{% set p = c.p %}{% set o = p.order %}{% set k = p.pack %}
+<div class="card trade {{ c.dest.tone }}">
+  {% if c.dest.tone == 'live' %}<div class="banner-live">Real money. Robinhood will also ask you to approve in its app.</div>{% endif %}
+  <div class="head">
+    <div class="grow">
+      <div class="dest {{ c.dest.tone }}">{{ c.dest.label }}</div>
+      <div class="order"><span class="side-{{ o.side }}">{{ o.side | upper }}</span> {{ o.qty }} {{ p.ticker }} · limit {{ o.limit_price | money }}</div>
+      <div class="muted small">{{ 'New position' if p.kind == 'entry' else 'Exit' }}{% if k.catalyst %} · {{ k.drug }} · {{ k.catalyst }}{% endif %}{% if k.trigger %} · trigger: {{ k.trigger }}{% endif %}</div>
+    </div>
+    <span class="pill {{ 'warn' if c.minutes_left < 30 else 'mute' }}">Expires in {{ c.minutes_left // 60 }} h {{ c.minutes_left % 60 }} min</span>
+  </div>
+  <p class="muted small">{{ c.dest.note }}</p>
+  <div class="facts">
+    {% if p.kind == 'entry' %}
+    <div><div class="k">Expected value</div><div class="v">{{ '%+.3f' % k.ev if k.ev is not none else '—' }}</div></div>
+    <div><div class="k">Evidence confidence</div><div class="v">{{ k.confidence | pct }}</div></div>
+    <div><div class="k">Cash runway</div><div class="v">{{ '%.1f' % k.runway_months if k.runway_months is not none else '—' }} mo</div></div>
+    <div><div class="k">Order value</div><div class="v">{{ (o.qty * (o.limit_price | float)) | money }}</div></div>
+    {% else %}
+    <div><div class="k">Shares held</div><div class="v">{{ k.held }}</div></div>
+    <div><div class="k">Selling</div><div class="v">{{ o.qty }}</div></div>
+    <div><div class="k">Reason</div><div class="v small">{{ k.reason }}</div></div>
+    <div><div class="k">Order value</div><div class="v">{{ (o.qty * (o.limit_price | float)) | money }}</div></div>
+    {% endif %}
+  </div>
+  {% if c.checks %}
+  <h3>Risk checks at staging</h3>
+  <ul class="checks">
+    {% for ch in c.checks %}<li><span class="{{ 'y' if ch.ok else 'n' }}">{{ '✓' if ch.ok else '✕' }}</span><span><strong>{{ ch.rule }}</strong> <span class="muted">{{ ch.reason }}</span></span></li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% if k.sources %}
+  <details class="stack"><summary>Sources ({{ k.sources | length }})</summary>
+    <ul class="small">{% for s in k.sources %}<li class="mono">{{ s }}</li>{% endfor %}</ul></details>
+  {% endif %}
+  <div class="decide">
+    <form class="box" method="post" action="/trades/{{ p.id }}/approve">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label for="ok-{{ p.id }}">Type <code>{{ c.confirm }}</code> to approve</label>
+      <div class="row"><input id="ok-{{ p.id }}" type="text" name="typed" autocomplete="off" data-match="{{ c.confirm }}">
+        <button class="btn go" type="submit">Approve</button></div>
+      <div class="hint">Fresh quote and risk checks run first; then it goes to {{ c.dest.label }}.</div>
+    </form>
+    <form class="box" method="post" action="/trades/{{ p.id }}/reject">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label for="no-{{ p.id }}">Reject, with a reason</label>
+      <div class="row"><input id="no-{{ p.id }}" type="text" name="reason" autocomplete="off" placeholder="e.g. spread too wide, prefer to wait" data-required>
+        <button class="btn danger" type="submit">Reject</button></div>
+      <div class="hint">Shown in the daily review.</div>
+    </form>
+  </div>
+  <div class="faint small stack">Staged {{ p.created_at | local }} · run <a class="link" href="/activity/run/{{ p.run_id }}">{{ p.run_id }}</a></div>
+</div>
+{% else %}
+<div class="card"><div class="empty"><strong>Nothing to approve</strong>When the paper cycle stages an order it appears here, with where it will be placed.</div></div>
+{% endfor %}
+
+<div class="card tight stack">
+  <div class="pad"><h2>Recent decisions</h2></div>
+  <table>
+    <thead><tr><th>Order</th><th>Destination</th><th>Decision</th><th>By</th><th>When</th></tr></thead>
+    <tbody>
+    {% for p, d in history %}
+      <tr>
+        <td><strong>{{ p.order.side | upper }} {{ p.order.qty }} {{ p.ticker }}</strong><span class="sub">limit {{ p.order.limit_price | money }} · {{ p.kind }}</span></td>
+        <td><span class="dest {{ d.tone }}">{{ d.label }}</span></td>
+        <td>{% set tone = {'approved':'ok','rejected':'mute','expired':'warn','failed':'bad'}[p.status] %}
+          <span class="pill {{ tone }}">{{ p.status | capitalize }}</span>
+          {% if p.note %}<span class="sub">{{ p.note }}</span>{% endif %}
+          {% if p.result and p.result.reasons %}<span class="sub">{{ p.result.reasons | join('; ') }}</span>{% endif %}</td>
+        <td class="muted">{{ p.decided_by or '—' }}</td>
+        <td class="nowrap">{{ p.decided_at | local }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5"><div class="empty">No decisions yet.</div></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

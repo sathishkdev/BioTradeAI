@@ -297,6 +297,8 @@ def test_daily_review_and_gate(cfg: GuardrailsConfig, rates: BaseRates, store: S
     r = daily_review(store, datetime.now(UTC).date())
     assert r.chain_ok and r.decisions["BUY_CANDIDATE"] == 1 and len(r.placed) == 1
     assert r.events["paper.cycle_done"] == 1
+    assert paper_gate(store, cfg).paper_days == 0  # fake-broker dry runs don't count
+    store.append_audit("paper.cycle_done", {"broker": "alpaca-paper"})
     g = paper_gate(store, cfg)
     assert g.paper_days == 1 and not g.eligible  # needs 90 days
     one_day = cfg.model_copy(update={"live_gate": cfg.live_gate.model_copy(

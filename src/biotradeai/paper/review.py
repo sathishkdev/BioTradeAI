@@ -94,7 +94,8 @@ def paper_gate(store: SQLiteStore, cfg: GuardrailsConfig) -> GateStatus:
     days: set[date] = set()
     breaches = 0
     for e in store.read_audit():
-        if e.event_type == "paper.cycle_done":
+        # Dry runs on the fake broker are not paper trading: they don't count.
+        if e.event_type == "paper.cycle_done" and e.payload.get("broker") != "fake":
             days.add(date.fromisoformat(e.ts[:10]))
         elif e.event_type == "guardrail.breach":
             breaches += 1

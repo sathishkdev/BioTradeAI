@@ -74,6 +74,10 @@ owner's account.
   Phase 1/2 is skipped and "Phase 2/3" counts as Phase 3. At base rates alone a
   Phase 2 readout is a SKIP (negative EV).
 
+- Operator app (`biotradeai ui`): agent host with editable schedules and run history,
+  approve-later trade queue with destination badges, watchlist review, catalysts,
+  positions, audit explorer, safety controls and validated settings. See D-072.
+
 ### Not yet
 - Phases 3, 9 and 10 (Robinhood spike, shadow mode, live pilot).
 - A backtest on real historical catalysts, with a stronger model.

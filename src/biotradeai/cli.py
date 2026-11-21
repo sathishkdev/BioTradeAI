@@ -25,7 +25,14 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from biotradeai import cli_agents, cli_paper, cli_rag, cli_trading, cli_watchlist
+from biotradeai import (
+    cli_agents,
+    cli_operator,
+    cli_paper,
+    cli_rag,
+    cli_trading,
+    cli_watchlist,
+)
 from biotradeai.agents.base_rates import BaseRateError
 from biotradeai.agents.llm import LLMError, LLMMessage, make_llm_client, resolve_spec
 from biotradeai.brokers.approval import ApprovalError
@@ -165,6 +172,7 @@ def build_parser() -> argparse.ArgumentParser:
     cli_agents.register(sub)
     cli_paper.register(sub)
     cli_watchlist.register(sub)
+    cli_operator.register(sub)
     return p
 
 

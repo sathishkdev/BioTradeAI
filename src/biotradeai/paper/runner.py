@@ -46,8 +46,12 @@ from biotradeai.paper.gather import EVENT_MAP, GatherError, exposure
 from biotradeai.schemas import ApprovalToken, CatalystState, ResearchInputs, StagedOrder
 from biotradeai.store.sqlite_store import SQLiteStore
 
-# (order, evidence pack) -> True if the human approved. The CLI asks interactively.
-Approver = Callable[[StagedOrder, dict[str, Any]], bool]
+# (order, evidence pack) -> True if the human approved, False if rejected, or DEFER to
+# park it for a later decision (approve-later queue; the operator UI decides it).
+DEFER = "defer"
+Approver = Callable[[StagedOrder, dict[str, Any]], bool | str]
+# (kind, order, evidence pack, run_id) -> pending id. Called when the approver defers.
+DeferSink = Callable[[str, StagedOrder, dict[str, Any], str], int]
 OUTCOME_EARLY_DAYS = 14  # a readout may be announced up to this long before the listed date
 
 
@@ -84,6 +88,8 @@ class PaperRunner:
                  critic: LLMClient, authority: ApprovalAuthority, approver: Approver,
                  checkpointer: Any, filings: FilingSource | None = None,
                  trials: TrialSource | None = None,
+                 on_defer: DeferSink | None = None,
+                 has_pending: Callable[[str], bool] = lambda ticker: False,
                  clock: Callable[[], datetime] = lambda: datetime.now(UTC)) -> None:
         self.cfg, self.store, self.broker = cfg, store, broker
         self._gatherer, self._rates = gatherer, rates
@@ -91,6 +97,7 @@ class PaperRunner:
         self._authority, self._approver = authority, approver
         self._saver, self._filings, self._clock = checkpointer, filings, clock
         self._trials = trials
+        self._on_defer, self._has_pending = on_defer, has_pending
         self._exec = ExecutionService(broker, store, cfg, authority)
         self.killswitch: KillSwitch = self._exec.killswitch
         self._last_exec: dict[str, Any] | None = None
@@ -101,9 +108,26 @@ class PaperRunner:
                run_id: str | None = None) -> None:
         self.store.append_audit(event, payload, ticker=ticker, run_id=run_id)
 
+    def _ask(self, kind: str, order: StagedOrder, pack: dict[str, Any],
+             run_id: str) -> bool | None:
+        """True/False = decided now; None = parked in the approve-later queue."""
+        ans = self._approver(order, pack)
+        if ans == DEFER:
+            if self._on_defer is None:
+                raise RuntimeError("approver deferred but no approve-later queue is wired")
+            pid = self._on_defer(kind, order, pack, run_id)
+            self._audit("approval.deferred", {"order": order.model_dump(mode="json"),
+                                              "pending_id": pid, "kind": kind},
+                        ticker=order.ticker, run_id=run_id)
+            return None
+        return bool(ans)
+
     def _approve_and_execute(self, order: StagedOrder, pack: dict[str, Any],
                              run_id: str) -> dict[str, Any]:
-        if not self._approver(order, pack):
+        ans = self._ask("exit", order, pack, run_id)
+        if ans is None:
+            return {"status": "pending_approval", "reasons": []}
+        if not ans:
             self._audit("approval.rejected", {"order": order.model_dump(mode="json")},
                         ticker=order.ticker, run_id=run_id)
             return {"status": "human_rejected", "reasons": []}
@@ -152,7 +176,8 @@ class PaperRunner:
         if rep.breaches:
             self.killswitch.trip("post-trade compliance breach: " + "; ".join(rep.breaches))
             rep.halted = "kill-switch tripped on a compliance breach"
-        self._audit("paper.cycle_done", {"evaluated": rep.evaluated, "skipped": rep.skipped,
+        self._audit("paper.cycle_done", {"broker": self.broker.name,
+                                         "evaluated": rep.evaluated, "skipped": rep.skipped,
                                          "orders": len(rep.orders), "exits": len(rep.exits),
                                          "breaches": rep.breaches, "errors": rep.errors[:20],
                                          "halted": rep.halted})
@@ -164,6 +189,9 @@ class PaperRunner:
         held = set(exposure(self.broker).open_tickers)
         for c in upcoming(catalysts, today=now.date()):
             if c.ticker in held:
+                continue
+            if self._has_pending(c.ticker):
+                rep.skipped.append((c.ticker, "an order is waiting for your approval"))
                 continue
             if self._evaluated_today(c.ticker, now.date()):
                 rep.skipped.append((c.ticker, "already evaluated today"))
@@ -187,12 +215,19 @@ class PaperRunner:
             if not out.awaiting_approval or order is None:
                 continue
             pack = {"kind": "entry", "ticker": c.ticker, "catalyst": f"{c.event} {c.date}",
+                    "event": c.event, "catalyst_date": c.date.isoformat(),
                     "drug": c.drug, "ev": out.state.risk_ev,
                     "confidence": inputs.evidence.confidence,
                     "runway_months": inputs.runway.months,
                     "sources": [s.url for s in inputs.evidence.sources][:5],
                     "checks": (out.risk or {}).get("checks", [])}
-            approved = self._approver(order, pack)
+            ans = self._ask("entry", order, pack, run_id)
+            if ans is None:  # parked: the graph stays at its human interrupt (checkpointed)
+                rep.orders.append({"ticker": c.ticker, "side": "buy", "qty": order.qty,
+                                   "limit": str(order.limit_price),
+                                   "status": "pending_approval", "reasons": []})
+                continue
+            approved = ans
             token = self._authority.issue(order) if approved else None
             if token is not None:
                 self._audit("approval.granted", {"order": order.model_dump(mode="json"),
@@ -204,18 +239,9 @@ class PaperRunner:
                                "limit": str(order.limit_price), **res})
             if res["status"] == ExecStatus.PLACED.value:
                 held.add(c.ticker)
-                self._save_entry(c, order)
+                record_entry(self.store, order, event=c.event, catalyst_date=c.date,
+                             opened_on=self._clock().date())
                 rep.breaches += self._post_trade_check(order, inputs, held)
-
-    def _save_entry(self, c: Catalyst, order: StagedOrder) -> None:
-        if order.limit_price is None:  # pragma: no cover - limit orders only
-            return
-        pos = SellPosition(ticker=c.ticker, qty=order.qty, entry_price=order.limit_price,
-                           catalyst_event=EVENT_MAP.get(c.event, c.event.lower()),
-                           catalyst_date=c.date, opened_on=self._clock().date())
-        self.store.save_sell_state(c.ticker, pos.model_dump(mode="json"))
-        self.store.upsert_position(c.ticker, order.qty, str(order.limit_price),
-                                   catalyst_date=c.date.isoformat())
 
     def _post_trade_check(self, order: StagedOrder, inputs: ResearchInputs,
                           held: set[str]) -> list[str]:
@@ -257,6 +283,9 @@ class PaperRunner:
         engine = SellEngine(self.cfg, self.store)
         for p in self.broker.get_positions():
             if p.qty <= 0:
+                continue
+            if self._has_pending(p.ticker):
+                rep.skipped.append((p.ticker, "an exit is waiting for your approval"))
                 continue
             pos = self._position_state(p.ticker, p.qty, p.avg_entry_price, catalysts)
             if pos is None:
@@ -320,3 +349,16 @@ class PaperRunner:
             except FetchError as exc:
                 errors.append(f"{pos.ticker} filings: {exc}"[:200])
         return evs
+
+
+def record_entry(store: SQLiteStore, order: StagedOrder, *, event: str, catalyst_date: date,
+                 opened_on: date) -> None:
+    """After a buy is placed: the position and its sell state machine (HOLDING)."""
+    if order.limit_price is None:  # pragma: no cover - limit orders only
+        return
+    pos = SellPosition(ticker=order.ticker, qty=order.qty, entry_price=order.limit_price,
+                       catalyst_event=EVENT_MAP.get(event, event.lower()),
+                       catalyst_date=catalyst_date, opened_on=opened_on)
+    store.save_sell_state(order.ticker, pos.model_dump(mode="json"))
+    store.upsert_position(order.ticker, order.qty, str(order.limit_price),
+                          catalyst_date=catalyst_date.isoformat())

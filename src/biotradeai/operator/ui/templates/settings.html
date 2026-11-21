@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block heading %}Settings{% endblock %}
+{% block subtitle %}<p>Guardrails, base rates, keys and app preferences. Every change is validated and logged.</p>{% endblock %}
+{% block content %}
+<div class="grid g2">
+  <div class="card">
+    <div class="head"><h2>App</h2></div>
+    <form method="post" action="/settings/presentation" class="setting">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <div><div class="name">Presentation mode</div><div class="hint">Hides money amounts and share counts, for screen sharing and recordings.</div></div>
+      <span class="pill {{ 'info' if presenting else 'mute' }}">{{ 'On' if presenting else 'Off' }}</span>
+      <button class="btn sm" type="submit" name="on" value="{{ '0' if presenting else '1' }}">{{ 'Turn off' if presenting else 'Turn on' }}</button>
+    </form>
+    {% if autostart is not none %}
+    <form method="post" action="/settings/autostart" class="setting">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <div><div class="name">Start agent host at login</div><div class="hint">So schedules run even if you never open this app. Uses Windows Task Scheduler.</div></div>
+      <span class="pill {{ 'ok' if autostart else 'mute' }}">{{ 'On' if autostart else 'Off' }}</span>
+      <button class="btn sm" type="submit" name="on" value="{{ '0' if autostart else '1' }}">{{ 'Turn off' if autostart else 'Turn on' }}</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="card" id="base-rates">
+    <div class="head"><h2>Base rates</h2>
+      {% if rates %}<span class="pill {{ 'ok' if rates.reviewed else 'warn' }}">{{ 'Reviewed' if rates.reviewed else 'Not reviewed' }}</span>{% endif %}</div>
+    {% if rates %}
+    <table>
+      <thead><tr><th>Event</th><th class="right">Success</th><th class="right">Partial</th><th class="right">Failure</th></tr></thead>
+      <tbody>{% for e in rates.events %}<tr><td>{{ e.name | event }}<span class="sub">{{ e.description }}</span></td>
+        <td class="right">{{ e.success | pct(1) }}</td><td class="right">{{ e.partial | pct(1) }}</td><td class="right">{{ e.failure | pct(1) }}</td></tr>{% endfor %}</tbody>
+    </table>
+    <p class="hint stack">Edit the numbers in <code>data/base_rates.yaml</code>. Mark them reviewed once you've checked every value against its source.</p>
+    <form method="post" action="/settings/base-rates" class="actions">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      {% if rates.reviewed %}<button class="btn sm" type="submit" name="reviewed" value="0">Mark not reviewed</button>
+      {% else %}<button class="btn sm primary" type="submit" name="reviewed" value="1">I've reviewed them</button>{% endif %}
+    </form>
+    {% else %}<p class="flash err">{{ rates_err }}</p>{% endif %}
+  </div>
+</div>
+
+<div class="card stack" id="secrets">
+  <div class="head"><h2>Keys and secrets</h2><span class="faint small">Values are never shown. Replace writes to .env.</span></div>
+  {% for s in secrets %}
+  <div class="secret">
+    <div><div class="name">{{ s.label }}{% if not s.required %} <span class="faint small">optional</span>{% endif %}</div><code class="faint small">{{ s.var }}</code>
+      {% if s.warning %}<div class="hint">{{ s.warning }}</div>{% endif %}</div>
+    <span class="pill {{ 'ok' if s.set else ('bad' if s.required else 'mute') }}"><span class="dot"></span>{{ 'Set' if s.set else 'Not set' }}</span>
+    <form method="post" action="/settings/secret">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="var" value="{{ s.var }}">
+      <input type="password" name="value" autocomplete="new-password" placeholder="New value" aria-label="New value for {{ s.label }}" data-required>
+      <button class="btn sm" type="submit">Replace</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+
+{% for group, fields in groups.items() %}
+<div class="card stack">
+  <div class="head"><h2>{{ group }}</h2>{% if loop.first %}<span class="faint small">config/guardrails.yaml · agents use changes from their next run</span>{% endif %}</div>
+  {% for f in fields %}
+  <form class="setting" id="g-{{ f.path }}" method="post" action="/settings/guardrail">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="path" value="{{ f.path }}">
+    <div><div class="name">{{ f.path.split('.')[-1] | replace('_', ' ') | capitalize }}<code>{{ f.path }}</code></div>
+      <div class="hint">{{ f.note or f.comment }}{% if f.note and f.comment %} · {{ f.comment }}{% endif %}</div></div>
+    {% if not f.editable %}
+      <span class="mono">{{ f.value }}</span><span class="faint small">Read-only</span>
+    {% elif f.kind == 'bool' %}
+      <select name="value"><option value="true" {{ 'selected' if f.value }}>true</option><option value="false" {{ 'selected' if not f.value }}>false</option></select>
+      <button class="btn sm" type="submit">Save</button>
+    {% else %}
+      <input type="number" name="value" value="{{ f.value }}" step="any">
+      <button class="btn sm" type="submit">Save</button>
+    {% endif %}
+  </form>
+  {% endfor %}
+</div>
+{% endfor %}
+{% endblock %}

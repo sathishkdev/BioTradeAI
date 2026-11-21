@@ -610,3 +610,29 @@ Findings are in `docs/robinhood_spike.md`. No orders were placed.
   skipped. Phase 3 / PDUFA evidence scores +1 so late-stage candidates rank first.
 * **Signals:** "Phase 2/3" and "Phase II/III" are read as Phase 3 (seamless pivotal
   designs); "Phase 2a" and "Phase 1/2" are not matched.
+
+## D-072 — Operator app: agent host, approve-later queue, local desktop UI (2026-11-21)
+* **Asked by the owner:** one place to schedule, run and monitor the agents, review the
+  watchlist, approve trades, change settings and read the audit trail, as a desktop app.
+* **Shape:** FastAPI + Jinja templates served on 127.0.0.1, shown in a native window
+  (pywebview / Edge WebView2; falls back to an Edge app window or the browser). No Node
+  toolchain. Optional install: `.[ui]`.
+* **One action path:** `operator/` service modules (jobs, trades, settings, watchlist_ops,
+  safety) are used by both the CLI and the UI. The web layer never imports a broker
+  (tested); `execution.py` stays the only order path.
+* **Agent host:** separate always-on process (`biotradeai host`), so schedules don't depend
+  on the window. Jobs run as subprocesses built from fixed definitions with validated
+  settings (no free text reaches a command line). One run per agent at a time; cancel;
+  missed runs fire within 2 hours; a host restart fails orphaned runs explicitly.
+* **Approve-later queue:** `paper run --approve-later` parks orders in `op_pending`. An
+  entry's buy graph stays at its checkpointed human interrupt and is resumed on approval,
+  so the audit trail stays one run. Approval re-checks: still pending and unexpired
+  (`orders.pending_approval_hours`, default 4), same mode, typed confirmation (ticker;
+  ticker + LIVE in live mode), kill-switch, price drift ≤ `orders.max_price_drift_pct`
+  (default 5%); then the normal token + `execution.py` pre-trade checks.
+* **Settings edits** validate the whole file with the strict model before writing, replace
+  only the one value (comments kept), and log old/new values. `mode` is read-only in the UI.
+* **Secrets** are never rendered: set/not-set plus a write-only replace; the value is never
+  logged. Robinhood account details (Phase 9) will be hidden by default, shown on request.
+* **Security:** per-launch session token (HttpOnly, SameSite=Strict cookie), CSRF token on
+  every POST, cross-origin POSTs refused, CSP `default-src 'self'` (no inline script/style).

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Agents{% endblock %}
+{% block body_attrs %}data-watch-running="{{ jobs_ | selectattr('active') | list | length }}"{% endblock %}
+{% block heading %}Agents{% endblock %}
+{% block subtitle %}<p>Schedules, settings and run history. Runs happen in the agent host, even with this window closed.</p>{% endblock %}
+{% block content %}
+{% if not host.running %}
+<div class="card stack">
+  <div class="head"><h2>The agent host is not running</h2>
+    <form method="post" action="/host/start" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="btn primary" type="submit">Start agent host</button></form></div>
+  <p class="muted">Schedules only fire, and queued runs only start, while the host runs. Turn on “Start at login” in Settings so it is always on.</p>
+</div>
+{% endif %}
+
+<div class="grid g3 stack">
+{% for j in jobs_ %}
+  <div class="card">
+    <div class="head"><h2>{{ j.title }}</h2>
+      {% if j.active %}<span class="pill info"><span class="dot pulse"></span>{{ j.active.status | capitalize }}</span>
+      {% elif j.enabled %}<span class="pill ok"><span class="dot"></span>Scheduled</span>
+      {% else %}<span class="pill mute">Manual</span>{% endif %}
+    </div>
+    <p class="muted small">{{ j.summary }}</p>
+    <dl class="kv small stack">
+      <dt>Schedule</dt><dd>{{ j.when if j.enabled else 'Off' }}</dd>
+      <dt>Next run</dt><dd>{{ j.next_fire.strftime('%a %b %d, %H:%M') if j.next_fire else '—' }}</dd>
+      <dt>Last run</dt><dd>{% if j.last %}<a class="link" href="/runs/{{ j.last.id }}">{{ j.last.status | capitalize }}</a> · {{ j.last.finished_at | ago }}{% else %}Never{% endif %}</dd>
+    </dl>
+    {% if j.last and j.last.status == 'failed' %}<p class="small stack"><span class="pill bad">Failed</span> <span class="muted">{{ (j.last.error or '')[:140] }}</span></p>{% endif %}
+    <div class="actions stack">
+      {% if j.active %}
+        <a class="btn" href="/runs/{{ j.active.id }}">View run</a>
+        <form method="post" action="/runs/{{ j.active.id }}/cancel" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="btn danger" type="submit">Stop</button></form>
+      {% else %}
+        <form method="post" action="/agents/{{ j.id }}/run" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="btn primary" type="submit">Run now</button></form>
+      {% endif %}
+      <a class="btn ghost" href="/agents/{{ j.id }}">Schedule &amp; settings</a>
+    </div>
+  </div>
+{% endfor %}
+</div>
+
+<div class="card tight stack">
+  <div class="pad"><h2>Recent runs</h2></div>
+  <table>
+    <thead><tr><th>Run</th><th>Agent</th><th>Trigger</th><th>Started</th><th>Duration</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for r in runs %}
+      <tr class="click" data-href="/runs/{{ r.id }}">
+        <td class="mono">#{{ r.id }}</td>
+        <td>{{ titles.get(r.job, r.job) }}</td>
+        <td class="muted">{{ 'Scheduled' if r.trigger == 'schedule' else 'Manual' }}</td>
+        <td class="nowrap">{{ (r.started_at or r.requested_at) | local }}</td>
+        <td>{{ r.duration_s | dur }}</td>
+        <td>{% set tone = {'succeeded':'ok','failed':'bad','running':'info','queued':'info','cancelled':'mute'}[r.status] %}
+          <span class="pill {{ tone }}"><span class="dot {{ 'pulse' if r.active }}"></span>{{ r.status | capitalize }}</span>
+          {% if r.status == 'failed' and r.error %}<span class="sub">{{ r.error[:90] }}</span>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6"><div class="empty"><strong>No runs yet</strong>Use “Run now” or turn on a schedule.</div></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

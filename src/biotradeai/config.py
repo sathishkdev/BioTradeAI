@@ -40,6 +40,10 @@ class OrdersConfig(_Strict):
     allowed_types: list[Literal["limit"]] = Field(min_length=1)
     allow_extended_hours: bool
     approval_ttl_minutes: float = Field(gt=0.0, le=60.0)
+    # Approve-later queue (operator UI): a staged order waits this long for a human,
+    # and is blocked at approval if the price moved more than this since staging.
+    pending_approval_hours: float = Field(gt=0.0, le=8.0)
+    max_price_drift_pct: float = Field(gt=0.0, le=0.2)
 
 
 class RunwayConfig(_Strict):

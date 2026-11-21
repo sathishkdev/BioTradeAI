@@ -29,9 +29,9 @@ from biotradeai.data.clinicaltrials import ClinicalTrialsClient
 from biotradeai.data.edgar import EdgarClient
 from biotradeai.data.openfda import OpenFDAClient
 from biotradeai.data.secindex import SecDirectory
+from biotradeai.operator import watchlist_ops as wl_ops
 from biotradeai.rag.embeddings import make_embedder
 from biotradeai.rag.index import VectorIndex
-from biotradeai.rag.ontology import Entity, upsert_entity
 from biotradeai.rag.pubmed import PubMedClient
 from biotradeai.rag.sync import DocumentSync
 from biotradeai.store.sqlite_store import SQLiteStore
@@ -172,33 +172,20 @@ def cmd_show(args: argparse.Namespace) -> int:
 
 
 def cmd_approve(args: argparse.Namespace) -> int:
-    wl = Watchlist()
-    e = wl.approve(args.id, by=getpass.getuser(), note=args.note)  # raises if not allowed
-    upsert_entity(Entity(e.entity_id, e.ticker, tuple(e.drug_names)))  # raises on collision
-    wl.save()  # only now is anything written
-    SQLiteStore().append_audit("watchlist.approved", {"id": e.id, "names": e.drug_names,
-                                                      "note": args.note}, ticker=e.ticker)
+    e = wl_ops.approve(args.id, by=getpass.getuser(), note=args.note, source="cli")
     print(f"approved {e.id}; names added to data/synonyms.yaml. Next "
           "`biotradeai watchlist follow` collects its documents and events.")
     return 0
 
 
 def cmd_reject(args: argparse.Namespace) -> int:
-    wl = Watchlist()
-    e = wl.reject(args.id, by=getpass.getuser(), reason=args.reason)
-    wl.save()
-    SQLiteStore().append_audit("watchlist.rejected", {"id": e.id, "reason": args.reason},
-                               ticker=e.ticker)
+    e = wl_ops.reject(args.id, by=getpass.getuser(), reason=args.reason, source="cli")
     print(f"rejected {e.id}; it won't be proposed again unless something material changes")
     return 0
 
 
 def cmd_retire(args: argparse.Namespace) -> int:
-    wl = Watchlist()
-    e = wl.retire(args.id, by=getpass.getuser(), reason=args.reason)
-    wl.save()
-    SQLiteStore().append_audit("watchlist.retired", {"id": e.id, "reason": args.reason,
-                                                     "by": "human"}, ticker=e.ticker)
+    e = wl_ops.retire(args.id, by=getpass.getuser(), reason=args.reason, source="cli")
     print(f"retired {e.id}")
     return 0
 
@@ -231,10 +218,7 @@ def cmd_follow(args: argparse.Namespace) -> int:
 
 def cmd_resync(args: argparse.Namespace) -> int:
     """Re-run the first sync on the next `follow` (documents are never duplicated)."""
-    e = Watchlist().get(args.id)
-    store = SQLiteStore()
-    store.kv_set(f"sync.initial.{e.entity_id}", "")  # empty = not done
-    store.append_audit("watchlist.resync", {"id": e.id}, ticker=e.ticker)
+    e = wl_ops.resync(args.id, source="cli")
     print(f"{e.id}: first sync will run again on the next `biotradeai watchlist follow` "
           "(already-loaded documents are skipped)")
     return 0
