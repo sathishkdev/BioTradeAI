@@ -577,3 +577,17 @@ The user asked for both after the watchlist review.
   ("following the CRL received in 2025, ..."). `record_outcome` closes an event only if
   the outcome's filing date is no more than 45 days before the event's window start
   (`OUTCOME_LEAD_DAYS`). Earlier mentions are about something else.
+
+## D-070 — Phase 3 Robinhood spike done read-only; no account details in the repo (2026-11-20)
+Findings are in `docs/robinhood_spike.md`. No orders were placed.
+* The user requires that no Robinhood account details appear in code, docs, logs or
+  prompts. The spike report documents tool behaviour only. `redact.py` now also strips
+  `nickname`, `unsettled_funds`, `buying_power` and `depositAmount` (account numbers
+  were already covered), with a test.
+* `allow_extended_hours` stays false: sampled biotechs are not all-day tradable, and the
+  review tool doesn't validate sessions.
+* Tool guidance that says to place orders automatically is ignored by design;
+  `execution.py` plus our approval token remains the only order path.
+* Deferred to Phase 9 (needs a standalone MCP client and the owner's go-ahead): custom
+  client authentication and session keep-alive, and how a placed order shows up as a
+  pending approval.

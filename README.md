@@ -509,7 +509,8 @@ real predictive skill.
 | 8 | Alpaca paper trading: runner, daily review, live-gate counter | built; the 8–12 week run needs your keys |
 | — | Network guardrails: allowlist, polite rates, budgets, breaker, pacing | done |
 | — | Watchlist scout, approval cards, automatic document sync and follow loop | done |
-| 3, 9, 10 | Robinhood spike, shadow mode, live pilot | last (needs your Robinhood account) |
+| 3 | Robinhood spike (read-only, no orders) — see docs/robinhood_spike.md | done (2 questions moved to Phase 9) |
+| 9, 10 | Robinhood shadow mode, live pilot | next (needs your go-ahead) |
 
 ## License
 

@@ -17,7 +17,9 @@ REDACTED = "[REDACTED]"
 
 _SENSITIVE_KEY = re.compile(
     r"(api[_-]?key|secret|password|passwd|token|authorization|auth|cookie|"
-    r"account[_-]?(number|no|id)|acct)",
+    r"account[_-]?(number|no|id)|acct|"
+    # Robinhood account details (user requirement: none in logs, code or LLM prompts)
+    r"nickname|unsettled[_-]?funds|buying[_-]?power|deposit[_-]?amount)",
     re.IGNORECASE,
 )
 

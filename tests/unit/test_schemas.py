@@ -171,3 +171,16 @@ def test_contracts_reject_extra_fields() -> None:
     with pytest.raises(ValidationError):
         Scenario(depth=1, label="a", probability=0.5, expected_return=0.1,
                  sneaky_ev=99)  # type: ignore[call-arg]
+
+
+def test_robinhood_account_details_are_redacted() -> None:
+    from biotradeai.redact import redact
+    out = redact({"account_number": "A1", "rhs_account_number": "A2", "rhc_account_number": "A3",
+                  "nickname": "N", "unsettled_funds": "5", "buying_power": "9",
+                  "order_checks": {"equityNotEnoughBpAlertDetails": {
+                      "depositAmount": {"amount": "150", "currency": "USD"}}},
+                  "symbol": "APMD"})
+    assert out["symbol"] == "APMD"
+    flat = str(out)
+    for secret in ("A1", "A2", "A3", "'N'", "'5'", "'9'", "150"):
+        assert secret not in flat, secret
