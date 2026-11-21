@@ -142,6 +142,15 @@ You can mix models: e.g. Claude for the Research generator, a local model for th
 critic, via `BIOTRADEAI_LLM_RESEARCH` / `BIOTRADEAI_LLM_CRITIC` in `.env`. The Risk Agent
 uses no LLM at all.
 
+**The research agent** (the tool loop that searches and fetches evidence before the
+analysis) needs a model with tool calling. Set it with `BIOTRADEAI_LLM_AGENT` in `.env`,
+or `paper run --agent-llm <spec>`; otherwise it uses the same model as the research
+generator. `llama3.2:3b` supports tools but rarely uses the fetch tools well; Claude
+does much better. To switch it off: `agent.enabled: false` in `config/guardrails.yaml`,
+`paper run --no-agent`, or set **Evidence gathering** to "Single baseline search" on the
+paper job in the operator app. Fetch tools only run for drugs you approved on the
+watchlist.
+
 ## 5. Create accounts and keys
 
 You do these steps yourself; the software never creates accounts or handles your

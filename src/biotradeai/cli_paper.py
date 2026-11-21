@@ -19,7 +19,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from biotradeai.agents.base_rates import load_base_rates
-from biotradeai.agents.llm import make_llm_client
+from biotradeai.agents.llm import LLMError, make_llm_client, make_tool_llm_client
 from biotradeai.brokers.alpaca_broker import AlpacaBroker
 from biotradeai.brokers.approval import ApprovalAuthority, load_secret
 from biotradeai.brokers.base import Broker
@@ -35,13 +35,16 @@ from biotradeai.events import CompletionDateChange
 from biotradeai.graph.buy_graph import sqlite_checkpointer
 from biotradeai.operator.db import OperatorDB
 from biotradeai.operator.trades import make_defer_sink
+from biotradeai.paper.agent_tools import toolbox_factory
 from biotradeai.paper.gather import EdgarFilings, LiveGatherer, edgar_runway
 from biotradeai.paper.review import daily_review, paper_gate, render_review
 from biotradeai.paper.runner import DEFER, Approver, PaperRunner
 from biotradeai.rag.embeddings import make_embedder
 from biotradeai.rag.index import VectorIndex
 from biotradeai.rag.ontology import load_ontology
+from biotradeai.rag.pubmed import PubMedClient
 from biotradeai.rag.retrieve import Retriever
+from biotradeai.rag.sync import DocumentSync
 from biotradeai.schemas import StagedOrder
 from biotradeai.store.sqlite_store import SQLiteStore
 from biotradeai.watchlist.catalysts import agent_catalysts, agent_outcomes
@@ -90,9 +93,22 @@ def cmd_paper_run(args: argparse.Namespace) -> int:
     broker: Broker = FakeBroker() if args.broker == "fake" else AlpacaBroker()
     edgar = EdgarClient()
     embedder = make_embedder(args.embedder)
-    retriever = Retriever(VectorIndex(embedder.name), embedder, load_ontology(), cfg)
+    index, ontology = VectorIndex(embedder.name), load_ontology()
+    retriever = Retriever(index, embedder, ontology, cfg)
     gatherer = LiveGatherer(retriever=retriever, runway=edgar_runway(edgar, cfg),
                             broker=broker, cfg=cfg)
+    agent_llm, toolbox = None, None
+    if cfg.agent.enabled and not args.no_agent:
+        try:
+            agent_llm = make_tool_llm_client("agent", args.agent_llm or args.llm)
+        except LLMError as exc:
+            print(f"  note: research agent off ({exc}); using the single baseline search")
+        else:
+            sync = DocumentSync(store=store, cfg=cfg, index=index, embedder=embedder,
+                                edgar=edgar, ctgov=ClinicalTrialsClient(),
+                                pubmed=PubMedClient())
+            toolbox = toolbox_factory(retriever=retriever, cfg=cfg, ontology=ontology,
+                                      watchlist=Watchlist(), sync=sync)
     authority = ApprovalAuthority(load_secret(),
                                   ttl=timedelta(minutes=cfg.orders.approval_ttl_minutes))
     if args.auto_reject and args.approve_later:
@@ -106,7 +122,7 @@ def cmd_paper_run(args: argparse.Namespace) -> int:
             authority=authority,
             approver=interactive_approver(args.auto_reject, args.approve_later),
             on_defer=make_defer_sink(opdb, broker=args.broker, cfg=cfg),
-            has_pending=opdb.has_pending,
+            has_pending=opdb.has_pending, agent_llm=agent_llm, toolbox=toolbox,
             checkpointer=saver, filings=EdgarFilings(edgar, store),
             trials=WatchlistTrials(Watchlist(), TrialDatePoller(ClinicalTrialsClient(), store)))
         # Human-curated rows + agent-managed events for APPROVED watchlist drugs.
@@ -152,6 +168,10 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     run.add_argument("--broker", choices=["alpaca", "fake"], default="alpaca")
     run.add_argument("--llm", help="research generator spec (default: env / config)")
     run.add_argument("--critic-llm", help="critic spec (default: same as --llm)")
+    run.add_argument("--agent-llm", help="research agent spec (default: "
+                     "BIOTRADEAI_LLM_AGENT, else --llm / env)")
+    run.add_argument("--no-agent", action="store_true",
+                     help="skip the research agent; use the single baseline search")
     run.add_argument("--embedder", help="embedder spec (default: env / bge-small)")
     run.add_argument("--auto-reject", action="store_true", help="never approve (dry run)")
     run.add_argument("--approve-later", action="store_true",

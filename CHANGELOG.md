@@ -2,6 +2,27 @@
 
 All notable changes. Dates are UTC. Details and reasons: [docs/DECISIONS.md](docs/DECISIONS.md).
 
+## [Unreleased]
+
+### Added
+- **Research agent (bounded autonomy):** an LLM tool loop in the buy graph (`agent` ⇄
+  `tools` → `score`) that chooses its own searches, fetches ClinicalTrials.gov records and
+  PubMed abstracts (ingested like any document), and decides when it has enough. Locked to
+  one ticker and drug, read-only, capped. Confidence is re-scored in code against the
+  fixed decision question.
+- **Critic feedback loop:** a reasoned Critic rejection sends the agent back for better
+  evidence and regenerates that depth (at most `agent.max_revisions` rounds).
+- **Tool calling in the LLM layer:** `converse()` for Anthropic, Ollama and the fake client.
+- **Config:** new `agent:` section in `guardrails.yaml` (editable on the Settings page).
+- **CLI:** `paper run --agent-llm SPEC`, `--no-agent`; role `BIOTRADEAI_LLM_AGENT`.
+- **Operator app:** "Evidence gathering" setting on the paper job; research runs show every
+  model turn, search, fetch and Critic round, and confidence before → after; trade cards
+  show the agent's summary.
+
+### Changed
+- `rag.retrieve`: scoring moved into `score_evidence()` (same results), plus
+  `Retriever.claim_chunks()` and `Retriever.hits_for()`.
+
 ## [0.1.0] — 2026-11-20
 
 First public version: everything except the Robinhood phases, which need the

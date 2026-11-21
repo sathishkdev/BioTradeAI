@@ -22,7 +22,8 @@ from decimal import Decimal
 from typing import Any, Protocol
 
 from biotradeai.agents.base_rates import BaseRates
-from biotradeai.agents.llm import LLMClient
+from biotradeai.agents.llm import LLMClient, ToolLLMClient
+from biotradeai.agents.research_agent import ToolboxFactory
 from biotradeai.brokers.approval import ApprovalAuthority
 from biotradeai.brokers.base import Broker
 from biotradeai.brokers.execution import ExecStatus, ExecutionService
@@ -38,12 +39,24 @@ from biotradeai.events import (
     PriceTick,
     SellEvent,
 )
-from biotradeai.graph.buy_graph import BuyGraphDeps, build_buy_graph, resume_run, start_run
+from biotradeai.graph.buy_graph import (
+    BuyGraphDeps,
+    RunOutcome,
+    build_buy_graph,
+    resume_run,
+    start_run,
+)
 from biotradeai.graph.sell_graph import Exit, SellEngine, SellPosition, SellState
 from biotradeai.guardrails import rules
 from biotradeai.guardrails.killswitch import KillSwitch
 from biotradeai.paper.gather import EVENT_MAP, GatherError, exposure
-from biotradeai.schemas import ApprovalToken, CatalystState, ResearchInputs, StagedOrder
+from biotradeai.schemas import (
+    ApprovalToken,
+    CatalystState,
+    ResearchInputs,
+    SourceRecord,
+    StagedOrder,
+)
 from biotradeai.store.sqlite_store import SQLiteStore
 
 # (order, evidence pack) -> True if the human approved, False if rejected, or DEFER to
@@ -90,6 +103,8 @@ class PaperRunner:
                  trials: TrialSource | None = None,
                  on_defer: DeferSink | None = None,
                  has_pending: Callable[[str], bool] = lambda ticker: False,
+                 agent_llm: ToolLLMClient | None = None,
+                 toolbox: ToolboxFactory | None = None,
                  clock: Callable[[], datetime] = lambda: datetime.now(UTC)) -> None:
         self.cfg, self.store, self.broker = cfg, store, broker
         self._gatherer, self._rates = gatherer, rates
@@ -98,6 +113,7 @@ class PaperRunner:
         self._saver, self._filings, self._clock = checkpointer, filings, clock
         self._trials = trials
         self._on_defer, self._has_pending = on_defer, has_pending
+        self._agent_llm, self._toolbox = agent_llm, toolbox
         self._exec = ExecutionService(broker, store, cfg, authority)
         self.killswitch: KillSwitch = self._exec.killswitch
         self._last_exec: dict[str, Any] | None = None
@@ -206,7 +222,8 @@ class PaperRunner:
                 continue
             self._last_exec = None
             deps = BuyGraphDeps(self.cfg, self._rates, self._gen, self._crit, self.store,
-                                executor=self._graph_exec, clock=lambda: now)
+                                executor=self._graph_exec, clock=lambda: now,
+                                agent_llm=self._agent_llm, toolbox=self._toolbox)
             app = build_buy_graph(deps, self._saver)
             out = start_run(app, state, inputs)
             rep.evaluated.append((c.ticker, out.state.decision.value if out.state.decision
@@ -217,10 +234,14 @@ class PaperRunner:
             pack = {"kind": "entry", "ticker": c.ticker, "catalyst": f"{c.event} {c.date}",
                     "event": c.event, "catalyst_date": c.date.isoformat(),
                     "drug": c.drug, "ev": out.state.risk_ev,
-                    "confidence": inputs.evidence.confidence,
+                    "confidence": (out.state.evidence or inputs.evidence).confidence,
                     "runway_months": inputs.runway.months,
-                    "sources": [s.url for s in inputs.evidence.sources][:5],
+                    "sources": [s.url for s in out_sources(out, inputs)][:8],
                     "checks": (out.risk or {}).get("checks", [])}
+            agent = out.agent or {}
+            if agent.get("ran"):
+                pack["research_summary"] = agent.get("summary") or ""
+                pack["agent_tool_calls"] = agent.get("total_calls", 0)
             ans = self._ask("entry", order, pack, run_id)
             if ans is None:  # parked: the graph stays at its human interrupt (checkpointed)
                 rep.orders.append({"ticker": c.ticker, "side": "buy", "qty": order.qty,
@@ -349,6 +370,11 @@ class PaperRunner:
             except FetchError as exc:
                 errors.append(f"{pos.ticker} filings: {exc}"[:200])
         return evs
+
+
+def out_sources(out: RunOutcome, inputs: ResearchInputs) -> list[SourceRecord]:
+    """Evidence the decision rests on: after the research agent, if it ran."""
+    return list((out.state.evidence or inputs.evidence).sources)
 
 
 def record_entry(store: SQLiteStore, order: StagedOrder, *, event: str, catalyst_date: date,

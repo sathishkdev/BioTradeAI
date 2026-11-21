@@ -85,6 +85,17 @@ class ToTConfig(_Strict):
     ev_match_tolerance: float = Field(gt=0.0, le=0.01)
 
 
+class AgentConfig(_Strict):
+    """Bounded autonomy for the research agent (``agents/research_agent.py``)."""
+
+    enabled: bool
+    max_tool_calls: int = Field(ge=1, le=20)  # per search round
+    max_turns: int = Field(ge=1, le=30)  # model calls per search round
+    max_revisions: int = Field(ge=0, le=3)  # Critic feedback rounds per run
+    max_evidence: int = Field(ge=3, le=20)  # chunks a decision may rest on
+    max_tokens_per_turn: int = Field(ge=256, le=8192)
+
+
 class SellConfig(_Strict):
     profit_target_pct: float = Field(gt=0.0)
     scale_out_fraction: float = Field(gt=0.0, le=1.0)
@@ -114,11 +125,14 @@ class GuardrailsConfig(_Strict):
     rag: RagConfig
     orders: OrdersConfig
     tot: ToTConfig
+    agent: AgentConfig
     sell: SellConfig
     live_gate: LiveGateConfig
 
     @model_validator(mode="after")
     def _cross_field_checks(self) -> Self:
+        if self.agent.max_evidence < self.rag.top_k:
+            raise ValueError("agent.max_evidence must be >= rag.top_k (the baseline search)")
         if self.fatal_runway_months >= self.min_runway_months:
             raise ValueError(
                 "fatal_runway_months (ToT prune) must be < min_runway_months (Risk veto)"

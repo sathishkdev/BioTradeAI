@@ -96,6 +96,8 @@ _CHOICE_ARGS: dict[tuple[str, str, str], list[str]] = {
     ("paper", "broker", "fake"): ["--broker", "fake"],
     ("paper", "approvals", "queue"): ["--approve-later"],
     ("paper", "approvals", "reject"): ["--auto-reject"],
+    ("paper", "research", "agent"): [],
+    ("paper", "research", "single"): ["--no-agent"],
 }
 
 JOBS: dict[str, JobDef] = {j.id: j for j in (
@@ -137,6 +139,11 @@ JOBS: dict[str, JobDef] = {j.id: j for j in (
                   "Approve later in this app, or reject everything (watch-only).",
                   choices=(("queue", "Wait for me in Trade approvals"),
                            ("reject", "Reject all (watch only)"))),
+            Param("research", "Evidence gathering", "choice", "agent",
+                  "The research agent searches and fetches evidence itself (needs a "
+                  "tool-capable model), or one fixed search as before.",
+                  choices=(("agent", "Research agent (tool loop)"),
+                           ("single", "Single baseline search"))),
         ),
         default_days=(0, 1, 2, 3, 4), default_time="10:00",
         needs_human="Orders wait in Trade approvals."),

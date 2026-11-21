@@ -636,3 +636,46 @@ Findings are in `docs/robinhood_spike.md`. No orders were placed.
   logged. Robinhood account details (Phase 9) will be hidden by default, shown on request.
 * **Security:** per-launch session token (HttpOnly, SameSite=Strict cookie), CSRF token on
   every POST, cross-origin POSTs refused, CSP `default-src 'self'` (no inline script/style).
+
+## D-073 — Research agent: a bounded autonomous tool loop for evidence (2026-11-21)
+* **Asked by the owner:** make research a real agent (the LLM decides its own next step),
+  while trading stays a deterministic workflow behind code and human approval.
+* **Shape:** two LangGraph nodes, `agent` (one model turn) and `tools` (code checks and
+  runs each requested tool), looping until `finish`, a text-only reply or a limit; then
+  `score`. Every turn and tool call is a checkpointed, audited step (`agent.*` events).
+  `agents/research_agent.py` holds tools, prompts and checks (no I/O);
+  `paper/agent_tools.py` implements them; the graph only sees a `Toolbox` protocol.
+* **Tools:** `search_evidence`, `list_trials`, `fetch_trial`, `fetch_pubmed`, `finish`.
+  All locked to the catalyst's ticker and drug entity. A trial is fetched only if its id
+  came from `list_trials`, the watchlist or found evidence, and only stored if the record
+  names the drug. Fetches go through `DocumentSync.add` (normal ingest), so the agent reads
+  stored, hashed chunks, never raw web text. No general web search, no SEC fetch (the
+  follow job owns SEC documents).
+* **Confidence stays code.** `score` re-measures every found chunk against the fixed
+  decision question (the baseline query), not the agent's wording; baseline chunks keep
+  the first places; the rest fill up to `agent.max_evidence` (10) by that similarity;
+  then the unchanged `rag.retrieve.score_evidence` (refactored out of `retrieve`). So the
+  agent can add relevant authoritative evidence but cannot hide weak evidence or pull in
+  loosely related high-tier text to lift the score.
+* **Critic feedback loop:** a reasoned Critic "reject" sends the agent back (`revise`) with
+  the reasons, then the same depth is regenerated with them in the Generator prompt.
+  Capped by `agent.max_revisions` (2). Missing verdicts and uncited nudges are not
+  feedback: more evidence would not fix them.
+* **The Generator sees the agent's summary as notes**, labelled "not evidence", with the
+  agent's C-handles rewritten to E-refs (or marked "not in evidence").
+* **Limits:** `agent.max_tool_calls` 8 and `agent.max_turns` 10 per round,
+  `max_tokens_per_turn` 1024; LangGraph `recursion_limit` 250 as the outer net. A model
+  error or limit ends the search; the run continues on what was found.
+* **Off switches:** `agent.enabled: false`, `paper run --no-agent`, the operator's
+  "Evidence gathering" setting, or no tool-capable client. Off = the graph passes straight
+  through and matches the single-search version (existing tests unchanged). Backtests run
+  without the agent; a toolbox with `live=False` offers search only (point-in-time).
+* **LLM layer:** `converse()` with native tool use for Anthropic (`tool_use` /
+  `tool_result` blocks) and Ollama (`tools` on `/api/chat`), plus scripted fake tool
+  replies. Tool turns are redacted like prompts.
+* **Audit key note:** the score payload records `source_weight`, not `authority`, because
+  the redactor masks keys that look like credentials ("auth").
+* **First real run (APMD, llama3.2:3b, on copies of the data):** one search, then finish.
+  Confidence 0.699 -> 0.771 (OK), mostly from the wider evidence window (10 relevant
+  chunks, more of them SEC). The small model did not fetch the trial record. Decision
+  still SKIP: EV +0.115 at base rates < `min_ev` 0.20.

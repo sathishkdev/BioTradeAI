@@ -9,10 +9,40 @@
     {% set tone = {'BUY_CANDIDATE': 'ok', 'SKIP': 'mute', 'INCONCLUSIVE': 'warn'}.get(decision.decision, 'mute') %}
     <div class="v"><span class="pill {{ tone }}">{{ (decision.decision or '?') | replace('_', ' ') | title }}</span></div></div>
   <div class="card stat"><div class="k">Expected value (risk agent)</div><div class="v">{{ '%+.3f' % decision.risk_ev if decision.risk_ev is not none else '—' }}</div></div>
-  <div class="card stat"><div class="k">Evidence confidence</div><div class="v">{{ ingest.confidence | pct(0) if ingest else '—' }}</div></div>
+  <div class="card stat"><div class="k">Evidence confidence</div>
+    {% if agent and agent.confidence is not none %}
+    <div class="v">{{ agent.confidence | pct(0) }}{% if agent.confidence_before is not none %} <small>from {{ agent.confidence_before | pct(0) }}</small>{% endif %}</div>
+    {% else %}<div class="v">{{ ingest.confidence | pct(0) if ingest else '—' }}</div>{% endif %}</div>
   <div class="card stat"><div class="k">Cash runway</div><div class="v">{{ '%.1f' % ingest.runway_months if ingest and ingest.runway_months is not none else '—' }} <small>months</small></div></div>
 </div>
 {% if decision.reasons %}<div class="card stack"><h2>Why</h2><ul>{% for x in decision.reasons %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+{% endif %}
+
+{% if agent %}
+<div class="card stack agent">
+  <div class="head">
+    <div class="grow"><h2>Research agent</h2>
+      <p class="muted small">The model chose these searches and fetches itself. Confidence is recomputed in code over everything it found.</p></div>
+    <span class="pill info">{{ agent.model }}</span>
+  </div>
+  <dl class="kv">
+    <dt>Tools</dt><dd>{{ agent.tools | join(', ') }}{% if not agent.live %} <span class="muted">(search only: fetching is off for this run)</span>{% endif %}</dd>
+    <dt>Tool calls</dt><dd>{{ agent.tool_calls }} in {{ agent.rounds }} round{{ 's' if agent.rounds != 1 }}{% if agent.stop_reason %} · stopped: {{ agent.stop_reason }}{% endif %}</dd>
+    {% if agent.tiers %}<dt>Evidence used</dt><dd>{{ agent.tiers | length }} chunk(s) · tier 1: {{ agent.tiers | select('equalto', 1) | list | length }} · tier 2: {{ agent.tiers | select('equalto', 2) | list | length }} · tier 3: {{ agent.tiers | select('equalto', 3) | list | length }}</dd>{% endif %}
+    {% if agent.status %}<dt>Evidence status</dt><dd><span class="pill {{ 'ok' if agent.status == 'OK' else 'warn' }}">{{ agent.status | title }}</span></dd>{% endif %}
+    {% if agent.summary %}<dt>Summary</dt><dd>{{ agent.summary }}</dd>{% endif %}
+  </dl>
+  {% if agent.steps %}
+  <ol class="agent-steps">
+    {% for s in agent.steps %}
+    <li class="{{ s.kind }}{{ ' bad' if not s.ok }}">
+      <span class="tag">{{ {'think': 'Model', 'tool': 'Result', 'fetch': 'Fetch', 'revise': 'Critic', 'error': 'Refused'}[s.kind] }}{% if s.round %} · round {{ s.round + 1 }}{% endif %}</span>
+      <div><strong>{{ s.title }}</strong>{% if s.detail %}<div class="muted small">{{ s.detail[:400] }}</div>{% endif %}</div>
+    </li>
+    {% endfor %}
+  </ol>
+  {% endif %}
+</div>
 {% endif %}
 
 {% if final and final.scenarios %}

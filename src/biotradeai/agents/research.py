@@ -239,6 +239,10 @@ class LevelTrace:
 BASE_RATE = "base rate"
 REBALANCED = "base rate (moved only by rebalancing so siblings sum to 1)"
 REJECTED = "critic rejected: "
+NO_EVIDENCE = "no valid evidence cited"
+NO_VERDICT = "critic gave no verdict"
+# Rejections that are not the Critic's judgement of the evidence (see buy_graph.critique).
+NOT_FEEDBACK = frozenset({NO_EVIDENCE, NO_VERDICT})
 
 
 def is_llm_adjusted(n: ToTNode) -> bool:
@@ -269,8 +273,15 @@ def _make_nodes(cands: list[Candidate], adj: dict[str, float], just: dict[str, s
 
 
 def generate_level(llm: LLMClient, state: CatalystState, inputs: ResearchInputs, depth: int,
-                   *, cfg: GuardrailsConfig, rates: BaseRates) -> tuple[list[ToTNode], LevelTrace]:
-    """Generator step: candidate children for every surviving node at ``depth - 1``."""
+                   *, cfg: GuardrailsConfig, rates: BaseRates, notes: str | None = None,
+                   feedback: list[dict[str, Any]] | None = None
+                   ) -> tuple[list[ToTNode], LevelTrace]:
+    """Generator step: candidate children for every surviving node at ``depth - 1``.
+
+    ``notes``: the research agent's summary (context, never citable evidence).
+    ``feedback``: the Critic's reasons for rejecting this depth's previous proposals,
+    when the research agent was sent back for better evidence (a revision round).
+    """
     d = cfg.tot.max_prob_adjustment
     cands = candidates_for_depth(list(state.tot_nodes), depth, rates=rates,
                                  event=state.catalyst_event, runway_months=inputs.runway.months)
@@ -280,6 +291,13 @@ def generate_level(llm: LLMClient, state: CatalystState, inputs: ResearchInputs,
              + (f" (given {c.parent_id})" if c.parent_id else "") for c in cands]
     prompt = (_header(state, inputs, depth) + _evidence_block(catalog)
               + "Candidates:\n" + "\n".join(lines) + "\n")
+    if notes:
+        prompt += ("Research notes (summary by the research agent; context only, cite E ids "
+                   f"from the evidence list, never these notes):\n{notes}\n")
+    if feedback:
+        prompt += ("A critic rejected earlier proposals at this depth:\n"
+                   + "\n".join(f"- {f['node']}: {f['reason']}" for f in feedback)
+                   + "\nRe-propose only where the evidence above now supports it.\n")
     reply, err = _call(llm, GENERATOR_SYSTEM.format(d=d), prompt, GENERATOR_SCHEMA)
     trace = LevelTrace("generator", depth, f"{llm.provider}:{llm.model}", _sha(prompt), reply)
     if err:
@@ -347,7 +365,7 @@ def critique_level(llm: LLMClient, state: CatalystState, inputs: ResearchInputs,
     # Groundedness rule (deterministic): no evidence, no adjustment.
     for n in adjusted:
         if not n.evidence_ids:
-            rejected[n.node_id] = "no valid evidence cited"
+            rejected[n.node_id] = NO_EVIDENCE
     to_review = [n for n in adjusted if n.node_id not in rejected]
     if to_review:
         lines = []
@@ -373,7 +391,7 @@ def critique_level(llm: LLMClient, state: CatalystState, inputs: ResearchInputs,
         else:
             verdicts = {r.node: (r.verdict.strip().lower(), r.reason) for r in parsed.reviews}
         for n in to_review:
-            v, why = verdicts.get(n.node_id, ("missing", "critic gave no verdict"))
+            v, why = verdicts.get(n.node_id, ("missing", NO_VERDICT))
             if v != "accept":
                 rejected[n.node_id] = why or v
 

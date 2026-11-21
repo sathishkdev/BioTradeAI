@@ -424,3 +424,30 @@ def test_header_shows_where_orders_go_with_broker_link(client: TestClient,
                        params={"broker": "fake", "approvals": "reject"}, by="t")
     page = client.get("/").text
     assert "Orders go to Fake broker · dry run" in page and "alpaca.markets" not in page
+
+
+def test_research_page_shows_the_agent_trace(client: TestClient, db: OperatorDB) -> None:
+    client.cookies.set(COOKIE, "tok")
+    rid = "paper-ONCO-20260105T150000"
+    a = db.store.append_audit
+    a("agent.start", {"model": "fake:m", "live": True,
+                      "tools": ["search_evidence", "fetch_trial", "finish"]}, run_id=rid,
+      ticker="ONCO")
+    a("agent.turn", {"round": 0, "turn": 1, "text": "need a trial record",
+                     "tool_calls": [{"id": "1", "name": "fetch_trial",
+                                     "arguments": {"nct_id": "NCT01234567"}}]},
+      run_id=rid, ticker="ONCO")
+    a("agent.tool", {"round": 0, "tool": "fetch_trial", "nct_id": "NCT01234567",
+                     "result": "added NCT01234567"}, run_id=rid, ticker="ONCO")
+    a("agent.revise", {"round": 1, "revision": 1, "feedback": [
+        {"node": "success", "reason": "excerpt is about safety"}]}, run_id=rid, ticker="ONCO")
+    a("agent.score", {"round": 1, "stop_reason": "finished", "summary": "Tier-1 record found",
+                      "confidence_before": 0.699, "confidence": 0.78, "tiers": [1, 2, 3],
+                      "evidence_status": "OK"}, run_id=rid, ticker="ONCO")
+    a("supervisor.decision", {"decision": "SKIP", "reasons": ["ev_min: 0.12 < 0.2"],
+                              "research_ev": 0.12, "risk_ev": 0.12}, run_id=rid, ticker="ONCO")
+    html = client.get(f"/activity/run/{rid}").text
+    for s in ("Research agent", "fetch_trial(NCT01234567)", "added NCT01234567",
+              "critic rejected 1 change", "Tier-1 record found", "tier 1: 1", "78%",
+              "from 70%"):
+        assert s in html, s

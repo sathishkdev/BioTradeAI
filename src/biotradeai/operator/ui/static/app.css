@@ -313,3 +313,25 @@ dialog .actions { justify-content: flex-end; margin-top: 18px; }
 
 .present-note { background: var(--info-soft); color: var(--info); font-size: 12px; font-weight: 600;
                 padding: 4px 10px; border-radius: 6px; }
+
+/* research agent trace (research run page) */
+.card.agent .head .grow h2 { flex: none; }
+.card.agent .head .grow p { margin: 2px 0 0; }
+ol.agent-steps { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 8px; }
+ol.agent-steps li { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 12px;
+                    align-items: start; padding: 8px 10px; border-radius: 8px;
+                    background: var(--surface-2); }
+ol.agent-steps li .tag { font-size: 11.5px; font-weight: 600; color: var(--muted);
+                         text-transform: uppercase; letter-spacing: .04em; padding-top: 2px; }
+ol.agent-steps li.think .tag { color: var(--info); }
+ol.agent-steps li.fetch { background: var(--info-soft); }
+ol.agent-steps li.revise { background: var(--warn-soft); }
+ol.agent-steps li.revise .tag { color: var(--warn); }
+ol.agent-steps li.bad { background: var(--bad-soft); }
+ol.agent-steps li.bad .tag { color: var(--bad); }
+ol.agent-steps li strong { overflow-wrap: anywhere; }
+@media (max-width: 700px) { ol.agent-steps li { grid-template-columns: 1fr; gap: 2px; } }
+.agent-note { background: var(--info-soft); border-radius: 8px; padding: 10px 12px; margin: 10px 0 14px; }
+.agent-note .tag { font-size: 11.5px; font-weight: 600; color: var(--info); text-transform: uppercase;
+                   letter-spacing: .04em; }
+.agent-note p { margin: 4px 0 6px; }

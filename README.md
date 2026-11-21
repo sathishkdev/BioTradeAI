@@ -2,11 +2,18 @@
 
 Multi-agent decision support for trading biotech stocks around **catalysts**: FDA PDUFA
 dates and Phase 3 (and, conservatively, Phase 2) readouts.
-1. A **Research Agent** builds a Tree-of-Thoughts scenario analysis anchored to
-   industry base rates.
-2. An independent, fully deterministic **Risk Agent** re-checks it.
-3. A **limit order** is staged for **your typed approval**.
-4. Selling is an event-driven **state machine**, not an LLM.
+1. A bounded, autonomous **research agent** gathers the evidence: an LLM in a tool loop
+   that chooses its own searches and fetches (locked to one ticker and drug, read-only,
+   capped). Confidence is then recomputed in code.
+2. A **Generator** and an independent **Critic** build a Tree-of-Thoughts scenario
+   analysis anchored to industry base rates. A Critic rejection can send the research
+   agent back for better evidence.
+3. An independent, fully deterministic **Risk Agent** re-checks it.
+4. A **limit order** is staged for **your typed approval**.
+5. Selling is an event-driven **state machine**, not an LLM.
+
+In short: an agentic workflow with one bounded autonomous agent. Every decision with
+financial effect stays in deterministic code plus your approval.
 
 > Decision support only — not financial advice. Default mode is `paper` (Alpaca paper
 > trading). Live trading is blocked in code until the live gate exists.
@@ -58,7 +65,9 @@ flowchart TB
 
     subgraph BUY["③ Buy pipeline — LangGraph Supervisor"]
         direction LR
-        GEN["Generator<br/>(LLM: bounded,<br/>cited nudges)"] --> CRIT["Critic<br/>(LLM + rules:<br/>reject · prune)"]
+        AGENT["Research agent<br/>(LLM tool loop: search,<br/>fetch trials/PubMed, finish)"] --> SCORE["Score<br/>(code: confidence<br/>over all evidence)"]
+        SCORE --> GEN["Generator<br/>(LLM: bounded,<br/>cited nudges)"] --> CRIT["Critic<br/>(LLM + rules:<br/>reject · prune)"]
+        CRIT -.->|rejected: search again| AGENT
         CRIT --> RISK["Risk Agent<br/>(no LLM,<br/>veto only)"]
     end
 
@@ -91,8 +100,10 @@ flowchart TB
   - Every block writes to the audit log; that is drawn only once.
   - The broker also sends quotes and positions back into the buy pipeline and the sell
     machine (read-only).
-- LLMs appear in only two boxes, the Generator and the Critic. Neither box can reach a
-  broker, change a threshold or do arithmetic.
+- LLMs appear in three boxes: the research agent, the Generator and the Critic. Only
+  the research agent decides its own next step, and only about which evidence to read.
+  None of them can reach a broker, change a threshold, write a catalyst date or do the
+  arithmetic.
 - Every order, whether a buy or an exit, passes the same gates before `execution.py`
   sends it: your signed approval, the guardrail rules, and the kill-switch.
 
@@ -128,10 +139,11 @@ flowchart TB
 
 | Block | File | What it does |
 |---|---|---|
-| LLM switcher | `agents/llm.py` | One `LLMClient` interface for Anthropic, Ollama or a fake client. Every prompt is redacted before it leaves the process. |
+| LLM switcher | `agents/llm.py` | One `LLMClient` interface for Anthropic, Ollama or a fake client: `complete` for one answer, `converse` for native tool calling. Every prompt and tool turn is redacted before it leaves the process. |
+| Research agent | `agents/research_agent.py`, `paper/agent_tools.py` | Bounded autonomous **tool loop**: searches the index, fetches trial records and abstracts, decides when it has enough. Locked to one ticker and drug, read-only, capped; confidence re-scored in code. |
 | Base rates | `agents/base_rates.py`, `data/base_rates.yaml` | Probabilities and return assumptions that anchor every tree node, with cited sources. |
 | ToT arithmetic | `agents/tot.py` | Bounded probability projection, residual collapse, tree EV. Pure code. |
-| Research Agent | `agents/research.py` | **Generator** (LLM) proposes evidence-cited adjustments of at most ±0.15. **Critic** (separate prompt) can only reject them. It also applies fatal-flaw pruning and the beam. |
+| Generator + Critic | `agents/research.py` | **Generator** (LLM) proposes evidence-cited adjustments of at most ±0.15. **Critic** (separate prompt) can only reject them. It also applies fatal-flaw pruning and the beam. |
 | Risk Agent | `agents/risk.py` | Fully deterministic, **veto only**. Recomputes EV independently and checks it against the Research EV. Checks runway, confidence, spread, concurrency, position room, freshness, and that the catalyst is still ahead. |
 | Supervisor | `graph/buy_graph.py` | LangGraph state machine with a SQLite checkpointer. Every transition is re-validated by Pydantic. Routes to BUY candidate, SKIP or INCONCLUSIVE. Pauses for your approval. |
 
@@ -209,9 +221,15 @@ estimates and are shown on cards but never used as catalyst dates.
 ```mermaid
 flowchart TD
     START([start]) --> INGEST["ingest<br/>validate inputs, log sources"]
-    INGEST -->|evidence INCONCLUSIVE| INC["INCONCLUSIVE<br/>→ human review, no LLM spend"]
-    INGEST -->|evidence OK| GEN["generate (depth d)<br/>LLM proposes bounded adjustments"]
+    INGEST --> AGENT["agent<br/>LLM picks the next tool, or finishes"]
+    AGENT -->|tool call| TOOLS["tools<br/>code checks + runs it"]
+    TOOLS --> AGENT
+    AGENT -->|finished or limit| SCORE["score<br/>code re-scores all evidence"]
+    SCORE -->|evidence INCONCLUSIVE| INC["INCONCLUSIVE<br/>→ human review, no ToT spend"]
+    SCORE -->|evidence OK| GEN["generate (depth d)<br/>LLM proposes bounded adjustments"]
     GEN --> CRIT["critique (depth d)<br/>reject unsupported · fatal-flaw prune · beam"]
+    CRIT -->|Critic rejected, rounds left| REV["revise<br/>tell the agent why; redo depth d"]
+    REV --> AGENT
     CRIT -->|d < 3 and branches left| GEN
     CRIT -->|done| FIN["finalize<br/>flatten to scenarios, Research EV"]
     FIN --> RISK["risk<br/>recompute EV, run every rule"]
@@ -226,10 +244,40 @@ flowchart TD
 ```
 
 **How the graph behaves:**
-- Each box is a LangGraph node.
+- Each box is a LangGraph node. `agent` ⇄ `tools` is the standard tool-calling (ReAct)
+  loop: every model turn and every tool call is its own checkpointed, audited step.
+- With no research agent configured (`agent.enabled: false`, `--no-agent`, or a run
+  without a toolbox such as backtests), `agent` and `score` pass straight through and the
+  graph behaves exactly like the original single-search version.
 - Nodes pass only validated JSON contracts (`CatalystState`, `ResearchInputs`,
   `ToTNode`), so workers never call each other.
 - State is checkpointed, so a run waiting for your approval survives a restart.
+
+### The research agent (bounded autonomy)
+
+`agents/research_agent.py` (prompts, tools, checks) and `paper/agent_tools.py` (I/O).
+
+| Tool | Reaches | What it does |
+|---|---|---|
+| `search_evidence(query)` | local Chroma index | Hybrid search with the hard ticker + drug filter. Only results returned here count as evidence (cited as C1, C2 …). |
+| `list_trials()` | ClinicalTrials.gov | Studies whose intervention names this drug. |
+| `fetch_trial(nct_id)` | ClinicalTrials.gov | Only an NCT id from `list_trials`, the watchlist, or found evidence; refused unless the record names the drug. Ingested as Tier 1. |
+| `fetch_pubmed(query)` | PubMed | Abstracts that name the drug; ingested as Tier 3. |
+| `finish(summary, key_evidence)` | — | Stops the loop. |
+
+- **Fetched text is stored before it is read.** Fetches go through the normal ingest
+  pipeline (chunk, tag, claims, embed, upsert, `ingested_docs`); the agent then reads
+  them with `search_evidence`, so every citation maps to a stored chunk with a hash.
+- **Confidence is never the agent's.** `score` re-measures every found chunk against the
+  fixed decision question (not the agent's query wording), keeps the baseline search
+  first, fills up to `agent.max_evidence` slots, and runs the same `score_evidence`
+  as before.
+- **Limits:** `agent.max_tool_calls` and `agent.max_turns` per round,
+  `agent.max_revisions` Critic rounds. Hitting a limit just ends the search.
+- **Fetch tools** need the drug's watchlist entry and are off in backtests (search
+  only). The agent cannot trade, change thresholds or write catalyst dates.
+- **Critic feedback:** only a reasoned Critic "reject" sends the agent back. A missing
+  verdict or an uncited nudge does not (more evidence would not fix those).
 
 ## Tree of Thoughts in detail
 
@@ -513,8 +561,11 @@ Every agent role picks its model with a spec string `<provider>:<model>`:
 | `anthropic:claude-sonnet-5-5` | Claude via API (`pip install -e ".[anthropic]"`, set `ANTHROPIC_API_KEY`) |
 | `fake` | deterministic stub used by tests |
 
-Resolution order: CLI `--llm` → `BIOTRADEAI_LLM_<ROLE>` (`RESEARCH`, `CRITIC`) →
-`BIOTRADEAI_LLM` → default `anthropic:claude-sonnet-5-5`. Embeddings switch the same way
+Resolution order: CLI `--llm` → `BIOTRADEAI_LLM_<ROLE>` (`RESEARCH`, `CRITIC`, `AGENT`) →
+`BIOTRADEAI_LLM` → default `anthropic:claude-sonnet-5-5`. The research agent uses the
+provider's native tool calling (`converse`), translated to one neutral shape; pick a
+tool-capable model for it (`paper run --agent-llm …` or `BIOTRADEAI_LLM_AGENT`). A small
+local model works but rarely uses the fetch tools well. Embeddings switch the same way
 with `BIOTRADEAI_EMBEDDER` (`st:<model>`, `ollama:<model>` or `hash`).
 
 ## Testing and evaluation
@@ -533,7 +584,7 @@ mypy
 pytest
 ```
 
-- `pytest` runs about 400 offline unit tests. They never call a real broker
+- `pytest` runs about 550 offline unit tests. They never call a real broker
   `place_order`.
 - `pytest -m integration` runs the live, read-only probes: SEC, CT.gov, Alpaca paper
   account and Ollama.

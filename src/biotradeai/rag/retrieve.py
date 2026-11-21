@@ -177,7 +177,6 @@ class Retriever:
 
     def retrieve(self, query: str, *, ticker: str, drug: str | None = None,
                  entity_id: str | None = None, as_of: datetime | None = None) -> RetrievalResult:
-        rag = self._cfg.rag
         ticker = ticker.upper()
         eid = self._entity(ticker, drug, entity_id)
         where = where_filter(ticker, eid, as_of)
@@ -190,37 +189,100 @@ class Retriever:
                     as_of is not None and c.published_at > as_of):
                 raise SemanticBleedError(f"chunk {c.chunk_id} is {c.ticker}/{c.entity_id}")
 
-        relevant = [h for h in hits if h.similarity >= rag.min_similarity]
-        claims, conflicts = resolve_claims(claim_chunks)
+        s = score_evidence(hits, claim_chunks, ticker=ticker, entity_id=eid, cfg=self._cfg)
+        return RetrievalResult(query, ticker, eid, tuple(hits), s.relevant, s.claims,
+                               s.conflicts, s.authority, s.density, s.confidence, s.bundle,
+                               s.reasons)
 
-        if relevant:
-            wsum = sum(max(h.similarity, 1e-9) for h in relevant)
-            authority = sum(rag.tier_weights[int(h.chunk.tier)] * max(h.similarity, 1e-9)
-                            for h in relevant) / wsum
-        else:
-            authority = 0.0
-        density = min(1.0, len(relevant) / rag.min_supporting_chunks)
-        confidence = round(authority * density, 6)
+    def claim_chunks(self, *, ticker: str, entity_id: str,
+                     as_of: datetime | None = None) -> list[Chunk]:
+        """Every claim-bearing chunk of one entity (conflict resolution looks at all)."""
+        return self._index.get(where_filter(ticker.upper(), entity_id, as_of,
+                                            {"has_claims": True}))
 
-        reasons: list[str] = []
-        if not relevant:
-            reasons.append("no relevant evidence above min_similarity")
-        if confidence < self._cfg.min_confidence:
-            reasons.append(f"confidence {confidence:.3f} < min {self._cfg.min_confidence}")
-        reasons += [f"unresolved {c.key} conflict: {c.note}" for c in conflicts if not c.resolved]
+    def hits_for(self, query: str, shas: list[str], *, ticker: str, entity_id: str,
+                 as_of: datetime | None = None) -> dict[str, Hit]:
+        """Given chunks (by sha256) of one entity, with their cosine similarity to
+        ``query``. Used to re-score what the research agent found against the fixed
+        decision question, whatever wording the agent searched with."""
+        if not shas:
+            return {}
+        where = where_filter(ticker.upper(), entity_id, as_of,
+                             {"sha256": {"$in": sorted(set(shas))}})
+        qvec = embed_query(self._embedder, query)
+        out: dict[str, Hit] = {}
+        for c, e in self._index.get_with_embeddings(where, limit=max(len(shas) * 4, 10)):
+            if c.ticker != ticker.upper() or c.entity_id != entity_id or (
+                    as_of is not None and c.published_at > as_of):
+                raise SemanticBleedError(f"chunk {c.chunk_id} is {c.ticker}/{c.entity_id}")
+            if c.sha256 not in out:
+                out[c.sha256] = Hit(c, math.fsum(a * b for a, b in zip(qvec, e, strict=True)))
+        return out
 
-        src_chunks: dict[str, Chunk] = {h.chunk.sha256: h.chunk for h in relevant}
-        for rc in claims.values():
-            for c in claim_chunks:
-                if c.sha256 == rc.evidence.sha256:
-                    src_chunks.setdefault(c.sha256, c)
-        bundle = EvidenceBundle(
-            ticker=ticker, entity_id=eid,
-            sources=[_source(c) for c in src_chunks.values()],
-            confidence=max(0.0, min(1.0, confidence)),
-            status=EvidenceStatus.INCONCLUSIVE if reasons else EvidenceStatus.OK,
-            inconclusive_reason="; ".join(reasons) or None,
-        )
-        return RetrievalResult(query, ticker, eid, tuple(hits), tuple(relevant), claims,
-                               tuple(conflicts), authority, density, confidence, bundle,
-                               tuple(reasons))
+
+# --------------------------------------------------------------------------- scoring
+
+
+@dataclass(frozen=True)
+class EvidenceScore:
+    relevant: tuple[Hit, ...]
+    claims: dict[str, ResolvedClaim]
+    conflicts: tuple[Conflict, ...]
+    authority: float
+    density: float
+    confidence: float
+    bundle: EvidenceBundle
+    reasons: tuple[str, ...]
+
+
+def score_evidence(hits: list[Hit], claim_chunks: list[Chunk], *, ticker: str,
+                   entity_id: str, cfg: GuardrailsConfig,
+                   limit: int | None = None) -> EvidenceScore:
+    """Confidence and the evidence bundle for a set of retrieved chunks. Pure code.
+
+    Used for the single baseline search and, unchanged, for everything the research
+    agent found (``limit`` = ``agent.max_evidence``; the first hits are kept first, so
+    the baseline search can never be pushed out). The agent cannot report its own
+    confidence: this function is the only place it is computed.
+    """
+    rag = cfg.rag
+    seen: set[str] = set()
+    relevant: list[Hit] = []
+    for h in hits:
+        if h.similarity >= rag.min_similarity and h.chunk.sha256 not in seen:
+            seen.add(h.chunk.sha256)
+            relevant.append(h)
+    if limit is not None:
+        relevant = relevant[:limit]
+    claims, conflicts = resolve_claims(claim_chunks)
+
+    if relevant:
+        wsum = sum(max(h.similarity, 1e-9) for h in relevant)
+        authority = sum(rag.tier_weights[int(h.chunk.tier)] * max(h.similarity, 1e-9)
+                        for h in relevant) / wsum
+    else:
+        authority = 0.0
+    density = min(1.0, len(relevant) / rag.min_supporting_chunks)
+    confidence = round(authority * density, 6)
+
+    reasons: list[str] = []
+    if not relevant:
+        reasons.append("no relevant evidence above min_similarity")
+    if confidence < cfg.min_confidence:
+        reasons.append(f"confidence {confidence:.3f} < min {cfg.min_confidence}")
+    reasons += [f"unresolved {c.key} conflict: {c.note}" for c in conflicts if not c.resolved]
+
+    src_chunks: dict[str, Chunk] = {h.chunk.sha256: h.chunk for h in relevant}
+    for rc in claims.values():
+        for c in claim_chunks:
+            if c.sha256 == rc.evidence.sha256:
+                src_chunks.setdefault(c.sha256, c)
+    bundle = EvidenceBundle(
+        ticker=ticker, entity_id=entity_id,
+        sources=[_source(c) for c in src_chunks.values()],
+        confidence=max(0.0, min(1.0, confidence)),
+        status=EvidenceStatus.INCONCLUSIVE if reasons else EvidenceStatus.OK,
+        inconclusive_reason="; ".join(reasons) or None,
+    )
+    return EvidenceScore(tuple(relevant), claims, tuple(conflicts), authority, density,
+                         confidence, bundle, tuple(reasons))

@@ -258,3 +258,87 @@ def ledger_today(db: OperatorDB) -> list[dict[str, Any]]:
         conn.close()
     return [{"source": r[0], "count": r[1], "failures": r[2], "tripped": bool(r[3])}
             for r in rows]
+
+
+# --------------------------------------------------------------------------- research agent
+
+
+@dataclass
+class AgentStep:
+    kind: str  # think | tool | fetch | revise | error
+    round: int
+    title: str
+    detail: str = ""
+    ok: bool = True
+
+
+@dataclass
+class AgentTrace:
+    model: str
+    live: bool
+    tools: list[str]
+    steps: list[AgentStep]
+    rounds: int
+    tool_calls: int
+    stop_reason: str
+    summary: str
+    confidence_before: float | None
+    confidence: float | None
+    tiers: list[int]
+    status: str
+
+
+def _call_title(c: dict[str, Any]) -> str:
+    args = c.get("arguments") or {}
+    if c.get("name") == "finish":
+        return "finish"
+    shown = ", ".join(f"{v}" for v in args.values() if v not in (None, "", []))
+    return f"{c.get('name')}({shown[:120]})"
+
+
+def agent_trace(rows: list[dict[str, Any]]) -> AgentTrace | None:
+    """What the research agent did in one run, from its audit events (oldest first)."""
+    start = next((r["payload"] for r in rows if r["event"] == "agent.start"), None)
+    if start is None:
+        return None
+    steps: list[AgentStep] = []
+    score: dict[str, Any] | None = None
+    calls = 0
+    for r in rows:
+        p, ev = r["payload"], r["event"]
+        rnd = int(p.get("round", 0) or 0)
+        if ev == "agent.turn":
+            text = str(p.get("text") or "").strip()
+            names = [_call_title(c) for c in p.get("tool_calls") or []]
+            steps.append(AgentStep("think", rnd, " · ".join(names) or "answered without a tool",
+                                   text))
+        elif ev == "agent.tool":
+            calls += 1
+            tool = str(p.get("tool", ""))
+            if p.get("error"):
+                steps.append(AgentStep("error", rnd, f"{tool}: refused", str(p["error"]), False))
+            elif tool == "search_evidence":
+                found = ", ".join(p.get("chunks") or []) or "nothing"
+                steps.append(AgentStep("tool", rnd, f"{p.get('results', 0)} result(s)", found))
+            elif tool == "finish":
+                steps.append(AgentStep("tool", rnd, "finished", str(p.get("summary") or "")))
+            else:
+                steps.append(AgentStep("fetch", rnd, tool.replace("_", " "),
+                                       str(p.get("result") or p.get("trials") or "")))
+        elif ev == "agent.revise":
+            fb = p.get("feedback") or []
+            steps.append(AgentStep("revise", rnd, f"critic rejected {len(fb)} change(s)",
+                                   "; ".join(f"{f.get('node')}: {f.get('reason')}"
+                                             for f in fb)))
+        elif ev == "agent.error":
+            steps.append(AgentStep("error", rnd, "model error", str(p.get("error", "")), False))
+        elif ev == "agent.score":
+            score = p
+    s = score or {}
+    return AgentTrace(
+        model=str(start.get("model", "")), live=bool(start.get("live")),
+        tools=list(start.get("tools") or []), steps=steps,
+        rounds=max((st.round for st in steps), default=0) + 1, tool_calls=calls,
+        stop_reason=str(s.get("stop_reason") or ""), summary=str(s.get("summary") or ""),
+        confidence_before=s.get("confidence_before"), confidence=s.get("confidence"),
+        tiers=list(s.get("tiers") or []), status=str(s.get("evidence_status") or ""))

@@ -16,6 +16,11 @@
     <span class="pill {{ 'warn' if c.minutes_left < 30 else 'mute' }}">Expires in {{ c.minutes_left // 60 }} h {{ c.minutes_left % 60 }} min</span>
   </div>
   <p class="muted small">{{ c.dest.note }}</p>
+  {% if k.research_summary %}
+  <div class="agent-note"><span class="tag">Research agent · {{ k.agent_tool_calls or 0 }} tool call{{ 's' if k.agent_tool_calls != 1 }}</span>
+    <p>{{ k.research_summary }}</p>
+    <a class="link small" href="/activity/run/{{ p.run_id }}">See every search and fetch</a></div>
+  {% endif %}
   <div class="facts">
     {% if p.kind == 'entry' %}
     <div><div class="k">Expected value</div><div class="v">{{ '%+.3f' % k.ev if k.ev is not none else '—' }}</div></div>

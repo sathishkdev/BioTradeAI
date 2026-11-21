@@ -422,6 +422,7 @@ def create_app(token: str, *, db: OperatorDB | None = None,
         return page(request, "research.html", "activity", run_id=run_id, rows=rows,
                     decision=by.get("supervisor.decision"), final=by.get("tot.finalize"),
                     risk=by.get("risk.verdict"), ingest=by.get("graph.ingest"),
+                    agent=views.agent_trace(rows),
                     ticker=rows[0]["ticker"] if rows else "")
 
     @app.post("/activity/verify")

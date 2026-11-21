@@ -35,6 +35,7 @@ READ_ONLY = {"mode": "Changed only through the shadow/live gates, not from here.
 GROUPS = {
     "": "Risk limits", "runway": "Cash runway", "rag": "Retrieval (RAG)",
     "orders": "Orders and approvals", "tot": "Research (Tree of Thoughts)",
+    "agent": "Research agent (tool loop)",
     "sell": "Exit rules", "live_gate": "Live gate",
 }
 
@@ -54,6 +55,12 @@ HELP = {
     "orders.max_price_drift_pct": "Approval is blocked if the price moved more than this.",
     "tot.residual_scenario_return": "Return assumed for pruned branches (placeholder).",
     "tot.max_prob_adjustment": "Largest evidence-based nudge to a base rate.",
+    "agent.enabled": "Let the research agent search and fetch evidence before the tree.",
+    "agent.max_tool_calls": "Most tool calls in one search round.",
+    "agent.max_turns": "Most model calls in one search round.",
+    "agent.max_revisions": "Rounds where Critic rejections send the agent back to search.",
+    "agent.max_evidence": "Most evidence chunks one decision may rest on.",
+    "agent.max_tokens_per_turn": "Reply length limit for each agent turn.",
     "sell.profit_target_pct": "Run-up that triggers taking profit.",
     "sell.trailing_stop_pct": "Trailing stop after a positive readout (placeholder).",
     "sell.completion_delay_months": "Exit if the trial slips more than this.",
