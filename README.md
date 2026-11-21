@@ -381,6 +381,19 @@ pip install -e ".[ui]"
 python -m biotradeai ui          # opens the app; starts the agent host if needed
 ```
 
+![Operator app: overview](docs/images/ui-overview.png)
+
+| | |
+|---|---|
+| ![Agents: schedules, run now, run history](docs/images/ui-agents.png) | ![Trade approvals: destination, checks, typed approval](docs/images/ui-trade-approval.png) |
+| **Agents**: schedules, run now / stop, last run and failures | **Trade approvals**: where the order goes, EV, risk checks, typed approve or reject (example order) |
+| ![Watchlist: proposals waiting for review](docs/images/ui-watchlist.png) | ![Research run: Tree-of-Thoughts scenarios and risk checks](docs/images/ui-research-run.png) |
+| **Watchlist**: proposals, approved, paused, rejected, retired | **Research run**: decision, EV, scenarios (including the pruned residual) and every risk check |
+
+![Settings: guardrails, base rates, write-only keys](docs/images/ui-settings.png)
+
+*Screenshots from a local test copy; the pending order is an illustrative example.*
+
 | Screen | What you can do |
 |---|---|
 | Overview | What's running, what needs you, failed runs, latest decisions, paper days toward the live gate |
