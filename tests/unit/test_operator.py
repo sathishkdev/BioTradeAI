@@ -411,3 +411,16 @@ def test_web_layer_never_imports_brokers() -> None:
         mods: list[Any] = [n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)]
         mods += [a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names]
         assert not any(m and m.startswith("biotradeai.brokers") for m in mods), name
+
+
+def test_header_shows_where_orders_go_with_broker_link(client: TestClient,
+                                                        db: OperatorDB) -> None:
+    client.cookies.set(COOKIE, "tok")
+    page = client.get("/positions").text
+    assert "Orders go to Alpaca · PAPER" in page
+    assert 'href="https://app.alpaca.markets/paper/dashboard/overview"' in page
+    assert 'target="_blank" rel="noopener noreferrer"' in page
+    jobs.save_schedule(db, "paper", enabled=False, days=[0], at_time="10:00",
+                       params={"broker": "fake", "approvals": "reject"}, by="t")
+    page = client.get("/").text
+    assert "Orders go to Fake broker · dry run" in page and "alpaca.markets" not in page

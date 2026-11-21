@@ -55,6 +55,8 @@
         <span class="pill info" id="running-pill" hidden><span class="dot pulse"></span><span class="t"></span></span>
         <span id="host-pill" class="pill {{ 'ok' if host.running else 'warn' }}"><span class="dot"></span><span class="t">{{ 'Agent host running' if host.running else 'Agent host stopped' }}</span></span>
         {% if ks.tripped %}<a href="/safety" class="pill bad"><span class="dot"></span>Kill-switch tripped</a>{% endif %}
+        {% if broker is defined and broker.url %}<a class="pill broker {{ broker.tone }}" href="{{ broker.url }}" target="_blank" rel="noopener noreferrer" title="Open {{ broker.broker }} in your browser"><span class="dot"></span>Orders go to {{ broker.label }}<span class="ext">↗</span></a>
+        {% elif broker is defined %}<span class="pill broker {{ broker.tone }}" title="{{ broker.note }}"><span class="dot"></span>Orders go to {{ broker.label }}</span>{% endif %}
         <span class="pill {{ 'live' if mode == 'live' else ('info' if mode == 'shadow' else 'mute') }}">Mode: {{ mode | upper }}</span>
       </div>
     </div>

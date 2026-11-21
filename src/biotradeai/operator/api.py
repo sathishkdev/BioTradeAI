@@ -188,6 +188,9 @@ def create_app(token: str, *, db: OperatorDB | None = None,
         return odb().store.kv_get(PRESENTATION_KEY) == "1"
 
     env = tpl.env
+    # Templates are read once per app start, so they always match the running code
+    # (editing files while the app runs can't mix old code with new templates).
+    env.auto_reload = False
     env.filters["local"] = _local
     env.filters["ago"] = _ago
     env.filters["dur"] = _dur
@@ -217,6 +220,7 @@ def create_app(token: str, *, db: OperatorDB | None = None,
                 "badge_watch": sum(1 for e in w.entries if e.status.value in
                                    ("proposed", "paused")),
                 "presenting": presenting(), "operator": operator,
+                "broker": views.current_destination(d),
                 "ok": request.query_params.get("ok"), "err": request.query_params.get("err")}
         return tpl.TemplateResponse(request, name, {**base, **ctx})
 

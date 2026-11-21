@@ -61,6 +61,14 @@ def _cfg() -> GuardrailsConfig | None:
         return None
 
 
+def current_destination(db: OperatorDB) -> Destination:
+    """Where orders go right now: the paper cycle's broker setting + the config mode."""
+    cfg = _cfg()
+    mode = cfg.mode.value if cfg else "paper"
+    broker = str(jobs.schedule_for(db, "paper").params.get("broker", "alpaca"))
+    return destination(broker, mode)
+
+
 def job_views(db: OperatorDB) -> list[JobView]:
     now = datetime.now().astimezone()
     out = []

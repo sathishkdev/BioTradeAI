@@ -63,18 +63,28 @@ class Destination:
     label: str
     tone: str  # paper | dry | shadow | live
     note: str
+    broker: str = ""  # display name of the broker
+    url: str | None = None  # the broker's own site, opened in your browser
+
+
+ALPACA_PAPER_URL = "https://app.alpaca.markets/paper/dashboard/overview"
+ROBINHOOD_URL = "https://robinhood.com/account"
 
 
 def destination(broker: str, mode: str) -> Destination:
     if broker == "fake":
-        return Destination("Fake broker · dry run", "dry", "Nothing leaves this computer.")
+        return Destination("Fake broker · dry run", "dry", "Nothing leaves this computer.",
+                           "Fake broker")
     if mode == Mode.SHADOW.value:
         return Destination("Robinhood · SHADOW", "shadow",
-                           "Simulation only: the order is reviewed, never placed.")
+                           "Simulation only: the order is reviewed, never placed.",
+                           "Robinhood", ROBINHOOD_URL)
     if mode == Mode.LIVE.value:
         return Destination("Robinhood · LIVE", "live",
-                           "Real money. Robinhood will also ask you to approve in its app.")
-    return Destination("Alpaca · PAPER", "paper", "Simulated money; fills like a real order.")
+                           "Real money. Robinhood will also ask you to approve in its app.",
+                           "Robinhood", ROBINHOOD_URL)
+    return Destination("Alpaca · PAPER", "paper", "Simulated money; fills like a real order.",
+                       "Alpaca", ALPACA_PAPER_URL)
 
 
 def required_confirmation(p: Pending) -> str:

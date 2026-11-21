@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Positions{% endblock %}
 {% block heading %}Positions{% endblock %}
-{% block subtitle %}<p>Open positions and where each one stands in the exit rules. The paper cycle checks them every run.</p>{% endblock %}
+{% block subtitle %}<p>Open positions and where each one stands in the exit rules. Orders go to <strong>{{ broker.label }}</strong>{% if broker.url %} · <a class="link" href="{{ broker.url }}" target="_blank" rel="noopener noreferrer">open {{ broker.broker }} ↗</a>{% endif %}.</p>{% endblock %}
 {% block content %}
 <div class="card tight">
   <table>

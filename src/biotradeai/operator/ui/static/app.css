@@ -124,6 +124,15 @@ p { margin: 0 0 8px; }
 .pill.info .dot { background: var(--info); }
 .pill.live { color: #fff; background: var(--bad); border-color: transparent; }
 .pill.mute { background: var(--surface-2); }
+.pill.broker.paper { color: var(--ok); }
+.pill.broker.paper .dot { background: var(--ok); }
+.pill.broker.shadow { color: var(--info); }
+.pill.broker.shadow .dot { background: var(--info); }
+.pill.broker.live { color: #fff; background: var(--bad); border-color: transparent; }
+.pill.broker.live .dot { background: #fff; }
+a.pill:hover { border-color: var(--border-strong); }
+.pill .ext { opacity: .7; margin-left: -2px; }
+.dest .ext-link { text-transform: none; letter-spacing: 0; font-weight: 520; margin-left: 8px; }
 .dot.pulse { animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .35; } }
 

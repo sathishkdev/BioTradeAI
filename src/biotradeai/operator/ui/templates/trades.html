@@ -9,7 +9,7 @@
   {% if c.dest.tone == 'live' %}<div class="banner-live">Real money. Robinhood will also ask you to approve in its app.</div>{% endif %}
   <div class="head">
     <div class="grow">
-      <div class="dest {{ c.dest.tone }}">{{ c.dest.label }}</div>
+      <div class="dest {{ c.dest.tone }}">{{ c.dest.label }}{% if c.dest.url %} <a class="link small ext-link" href="{{ c.dest.url }}" target="_blank" rel="noopener noreferrer">Open {{ c.dest.broker }} ↗</a>{% endif %}</div>
       <div class="order"><span class="side-{{ o.side }}">{{ o.side | upper }}</span> {{ o.qty }} {{ p.ticker }} · limit {{ o.limit_price | money }}</div>
       <div class="muted small">{{ 'New position' if p.kind == 'entry' else 'Exit' }}{% if k.catalyst %} · {{ k.drug }} · {{ k.catalyst }}{% endif %}{% if k.trigger %} · trigger: {{ k.trigger }}{% endif %}</div>
     </div>
@@ -69,7 +69,7 @@
     {% for p, d in history %}
       <tr>
         <td><strong>{{ p.order.side | upper }} {{ p.order.qty }} {{ p.ticker }}</strong><span class="sub">limit {{ p.order.limit_price | money }} · {{ p.kind }}</span></td>
-        <td><span class="dest {{ d.tone }}">{{ d.label }}</span></td>
+        <td><span class="dest {{ d.tone }}">{{ d.label }}</span>{% if d.url %}<span class="sub"><a class="link" href="{{ d.url }}" target="_blank" rel="noopener noreferrer">Open {{ d.broker }} ↗</a></span>{% endif %}</td>
         <td>{% set tone = {'approved':'ok','rejected':'mute','expired':'warn','failed':'bad'}[p.status] %}
           <span class="pill {{ tone }}">{{ p.status | capitalize }}</span>
           {% if p.note %}<span class="sub">{{ p.note }}</span>{% endif %}

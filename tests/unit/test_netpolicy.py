@@ -21,7 +21,8 @@ from biotradeai.store.sqlite_store import SQLiteLedger
 SRC = REPO_ROOT / "src" / "biotradeai"
 # Hosts that appear in source only as citation links stored with documents; the code
 # never sends requests to them.
-LINK_ONLY_HOSTS = {"pubmed.ncbi.nlm.nih.gov"}
+# Shown to the human as links (opened in their browser), never fetched by the agents.
+LINK_ONLY_HOSTS = {"pubmed.ncbi.nlm.nih.gov", "app.alpaca.markets", "robinhood.com"}
 
 
 class Server:
